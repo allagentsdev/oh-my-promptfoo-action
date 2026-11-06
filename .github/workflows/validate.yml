@@ -1,0 +1,142 @@
+name: Validate Action
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  behavior:
+    name: Action behavior
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm lint
+      - name: Prepare the actual source-pinned toolchain
+        id: runtime
+        run: node scripts/prepare-toolchain.mjs
+      - run: pnpm test
+        env:
+          OMP_TOOLCHAIN_DIRECTORY: ${{ steps.runtime.outputs.toolchain-directory }}
+  release:
+    name: Run Evals - Required name-normalization release regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./
+        id: eval
+        with:
+          config: examples/ci/release/promptfooconfig.yaml
+          public-labels: "true"
+          upload-results: "true"
+          args-json: '["--filter-metadata", "suite=required", "--filter-metadata", "language=latin", "--no-cache"]'
+      - name: Verify native coverage, suite links and the scored-result upload
+        env:
+          STATUS: ${{ steps.eval.outputs.evaluation-status }}
+          RESULTS: ${{ steps.eval.outputs.result-path }}
+          SUMMARY: ${{ steps.eval.outputs.summary-path }}
+          ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          assert.equal(process.env.STATUS, 'pass');
+          const rows = JSON.parse(await readFile(process.env.RESULTS, 'utf8')).results.results;
+          assert.equal(rows.length, 4);
+          assert.ok(rows.every(row => row.success));
+          const summary = await readFile(process.env.SUMMARY, 'utf8');
+          for (const span of ['L8-L16','L17-L25','L26-L34','L35-L43']) assert.ok(summary.includes(`examples/ci/release/promptfooconfig.yaml#${span}`));
+          assert.ok(summary.includes('## Evals — ✅ PASS'));
+          assert.match(process.env.ARTIFACT_URL, /^https:\/\/github\.com\/allagentsdev\/oh-my-promptfoo-action\/.+\/artifacts\/\d+$/);
+          assert.ok(summary.includes(process.env.ARTIFACT_URL));
+          NODE
+  private-default:
+    name: Run Evals - Default private artifact policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./
+        id: eval
+        with:
+          config: examples/ci/release/promptfooconfig.yaml
+          args-json: '["--no-cache"]'
+      - name: Verify uploads remain disabled by default
+        env:
+          STATUS: ${{ steps.eval.outputs.evaluation-status }}
+          ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
+          ARTIFACT_ID: ${{ steps.eval.outputs.result-artifact-id }}
+          NATIVE_RESULT: ${{ steps.eval.outputs.result-path }}
+          DIRECTORY: ${{ steps.eval.outputs.artifact-directory }}
+          SUMMARY: ${{ steps.eval.outputs.summary-path }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {access, readFile} from 'node:fs/promises';
+          import {join} from 'node:path';
+          assert.equal(process.env.STATUS, 'pass');
+          assert.equal(process.env.ARTIFACT_URL, '');
+          assert.equal(process.env.ARTIFACT_ID, '');
+          await access(process.env.NATIVE_RESULT);
+          await assert.rejects(access(join(process.env.DIRECTORY, 'scored-results.json')), {code:'ENOENT'});
+          const summary = await readFile(process.env.SUMMARY, 'utf8');
+          assert.ok(!summary.includes('Agent output and judge reasons:'));
+          NODE
+  failure-artifact:
+    name: Run Evals - Intentional assertion failure (artifact regression)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./
+        id: eval
+        continue-on-error: true
+        env:
+          ARTIFACT_CANARY_TOKEN: artifact-secret-canary
+        with:
+          config: tests/fixtures/ci-artifact-failure.yaml
+          upload-results: "true"
+          artifact-retention-days: "1"
+          args-json: '["--no-cache"]'
+      - name: Verify the failure gate and retained scored result
+        env:
+          OUTCOME: ${{ steps.eval.outcome }}
+          STATUS: ${{ steps.eval.outputs.evaluation-status }}
+          ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
+          NATIVE_RESULT: ${{ steps.eval.outputs.result-path }}
+          SCORED_RESULT: ${{ steps.eval.outputs.artifact-directory }}/scored-results.json
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          assert.equal(process.env.OUTCOME, 'failure');
+          assert.equal(process.env.STATUS, 'fail');
+          assert.match(process.env.ARTIFACT_URL, /^https:\/\/github\.com\/.+\/artifacts\/\d+$/);
+          const native = await readFile(process.env.NATIVE_RESULT, 'utf8');
+          const scored = await readFile(process.env.SCORED_RESULT, 'utf8');
+          assert.ok(native.includes('artifact-secret-canary'));
+          assert.ok(!scored.includes('artifact-secret-canary'));
+          const rows = JSON.parse(scored).results.results;
+          assert.equal(rows.length, 1);
+          assert.equal(rows[0].success, false);
+          assert.equal(rows[0].response.output, 'READY');
+          assert.ok(rows[0].gradingResult.reason);
+          NODE
