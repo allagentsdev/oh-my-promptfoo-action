@@ -1,3 +1,4 @@
 node_modules/
 .verification/
 .promptfoo-ci/
+.recording/

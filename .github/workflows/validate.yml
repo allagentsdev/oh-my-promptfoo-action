@@ -33,6 +33,8 @@ jobs:
     name: Run Evals - Required name-normalization release regression
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      artifact-id: ${{ steps.eval.outputs.result-artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -63,6 +65,56 @@ jobs:
           assert.ok(summary.includes('## Evals — ✅ PASS'));
           assert.match(process.env.ARTIFACT_URL, /^https:\/\/github\.com\/allagentsdev\/oh-my-promptfoo-action\/.+\/artifacts\/\d+$/);
           assert.ok(summary.includes(process.env.ARTIFACT_URL));
+          NODE
+  replay:
+    name: Run Evals - Replay the scored release suite
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.release.outputs.artifact-id }}
+          merge-multiple: true
+          path: .recording
+      - uses: ./
+        id: eval
+        with:
+          execution-mode: replay
+          replay-results: .recording/scored-results.json
+          config: examples/ci/release/promptfooconfig.yaml
+          public-labels: "true"
+      - name: Verify recorded outcomes, historical metrics and default privacy
+        env:
+          REPLAYED: ${{ steps.eval.outputs.replayed }}
+          STATUS: ${{ steps.eval.outputs.evaluation-status }}
+          NATIVE_EXIT: ${{ steps.eval.outputs.evaluation-exit-code }}
+          REPORT: ${{ steps.eval.outputs.report-path }}
+          SUMMARY: ${{ steps.eval.outputs.summary-path }}
+          ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          assert.equal(process.env.REPLAYED, 'true');
+          assert.equal(process.env.STATUS, 'pass');
+          assert.equal(process.env.NATIVE_EXIT, 'unknown');
+          assert.equal(process.env.ARTIFACT_URL, '');
+          const capture = JSON.parse(await readFile('.recording/scored-results.json', 'utf8')).results.results;
+          const report = JSON.parse(await readFile(process.env.REPORT, 'utf8'));
+          assert.equal(report.cases.length, 4);
+          for (let i = 0; i < capture.length; i++) {
+            assert.equal(report.cases[i].status, capture[i].success ? 'pass' : 'fail');
+            assert.equal(report.cases[i].score, capture[i].score);
+            assert.equal(report.cases[i].latencyMs, capture[i].latencyMs);
+            assert.equal(report.cases[i].candidateCost.usd, capture[i].response.cost);
+          }
+          const summary = await readFile(process.env.SUMMARY, 'utf8');
+          assert.ok(summary.includes('Replay — recorded evaluation'));
+          for (const span of ['L8-L16','L17-L25','L26-L34','L35-L43']) assert.ok(summary.includes(`promptfooconfig.yaml#${span}`));
           NODE
   private-default:
     name: Run Evals - Default private artifact policy

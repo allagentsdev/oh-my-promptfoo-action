@@ -4,6 +4,12 @@ branding:
   icon: check-circle
   color: purple
 inputs:
+  execution-mode:
+    description: live evaluates the authored config; replay renders a recorded scored result without candidate or grader calls
+    default: "live"
+  replay-results:
+    description: Native scored-result JSON relative to working-directory; required only in replay mode
+    default: ""
   config:
     description: One local Promptfoo config file, relative to working-directory
     required: true
@@ -35,6 +41,9 @@ inputs:
     description: Optional unique artifact name; defaults to a generated name for this invocation
     default: ""
 outputs:
+  replayed:
+    description: true when the report uses recorded results and no candidate or grader calls were made
+    value: ${{ steps.evaluate.outputs.replayed }}
   result-artifact-url:
     description: Download URL after an explicitly enabled upload succeeds; empty otherwise
     value: ${{ steps.upload.outputs.artifact-url }}
@@ -100,6 +109,9 @@ runs:
       id: evaluate
       shell: bash
       env:
+        OMP_ACTION_PATH: ${{ github.action_path }}
+        OMP_EXECUTION_MODE: ${{ inputs.execution-mode }}
+        OMP_REPLAY_RESULTS: ${{ inputs.replay-results }}
         OMP_CLI_PATH: ${{ steps.runtime.outputs.cli-path }}
         OMP_CONFIG: ${{ inputs.config }}
         OMP_ARGS: ${{ inputs.args-json }}
@@ -109,10 +121,7 @@ runs:
         OMP_SUITE_NUMBER: ${{ inputs.suite-number }}
         OMP_PUBLIC_LABELS: ${{ inputs.public-labels }}
       run: |
-        node "$OMP_CLI_PATH" eval \
-          --config "$OMP_CONFIG" --args-json "$OMP_ARGS" --args-file "$OMP_ARGS_FILE" \
-          --working-directory "$OMP_WORKING_DIRECTORY" --output-dir "$OMP_OUTPUT_DIRECTORY" \
-          --suite-number "${OMP_SUITE_NUMBER:-1}" --public-labels "${OMP_PUBLIC_LABELS:-false}" --github
+        node "$OMP_ACTION_PATH/scripts/evaluate.mjs"
     - name: Prepare the approved scored result
       id: scored
       if: ${{ !cancelled() && inputs.upload-results == 'true' && steps.evaluate.outputs.results-available == 'true' }}
