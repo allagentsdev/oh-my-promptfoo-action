@@ -2,6 +2,8 @@
 
 ## 1.0.1 - 2026-11-09
 
+- Name the root Action `oh-my-promptfoo Evals` and document Marketplace publication, independent stable semantic versions and immutable SHA pinning.
+
 - Use the shared reporter's nested criterion counts, approved stable case IDs, and native rubric cost estimates based on recorded prices and model identity. Preserve unknown measurements, native verdicts and full test-block links.
 
 ## 1.0.0 - 2026-11-09

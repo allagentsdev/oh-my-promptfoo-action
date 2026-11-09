@@ -1,4 +1,4 @@
-name: Native Promptfoo evaluation
+name: oh-my-promptfoo Evals
 description: Run one authored Promptfoo config with pinned tooling and private local artifacts
 branding:
   icon: check-circle
