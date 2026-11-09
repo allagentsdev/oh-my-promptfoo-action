@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 - 2026-11-09
+
+- Use the reviewed reporter that names unlabelled `skill-used` and `not-skill-used` checks after their string skill targets when public labels are enabled. Keep explicit metrics first and other assertion values private.
+
 ## 1.1.0 - 2026-11-09
 
 - Use exact caller-installed public packages with `toolchain-mode: installed` and `dependency-directory`, skipping source cloning, dependency installation and building. Verify the package's public CLI/reporting exports and its resolved Promptfoo version against the reviewed pins; reject missing or mismatched installations without a fallback.
