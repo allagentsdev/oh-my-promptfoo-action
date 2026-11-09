@@ -177,7 +177,11 @@ test("runtime replay renders captured native rows without loading providers and 
       prompts: ["PRIVATE_ANSWER"],
       providers: ["echo"],
       tests: [
-        { description: "One recorded test", assert: [{ type: "equals", value: "PRIVATE_ANSWER" }] },
+        {
+          description: "One recorded test",
+          metadata: { id: "recorded-case-1" },
+          assert: [{ type: "equals", value: "PRIVATE_ANSWER" }],
+        },
       ],
     });
     await writeFile(config, authored);
@@ -196,6 +200,7 @@ test("runtime replay renders captured native rows without loading providers and 
     assert.equal(replay.values.replayed, "true");
     assert.equal(replay.values["evaluation-exit-code"], "unknown");
     assert.ok(replay.summary.includes("Replay — recorded evaluation"));
+    assert.ok(replay.summary.includes("Test 1 · recorded-case-1"));
     assert.ok(!replay.stdout.includes("Completed 1") && !replay.summary.includes("PRIVATE_ANSWER"));
     const report = await json(replay.values["report-path"]);
     delete report.replayed;

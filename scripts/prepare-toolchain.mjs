@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { appendFile, mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-// This source pin contains the public eval/report CLI before its first npm release.
-// Its own frozen lockfile pins Promptfoo and the package's complete build toolchain.
+// The reviewed source and its frozen lockfile pin the public CLI, Promptfoo and
+// the package's complete build toolchain together.
 const { repository, revision } = JSON.parse(
   await readFile(new URL("../toolchain.json", import.meta.url), "utf8"),
 );

@@ -45,6 +45,10 @@ YAML/JSON test blocks, native scores against authored thresholds, per-assertion
 details, latency, and separate candidate/grader usage and cost. Missing
 measurements and failed-grader spend remain unknown. Costs use four decimal
 places, with more precision when positive spend would otherwise display as zero.
+With public labels enabled, stable `metadata.id` values identify cases, falling
+back to descriptions. The assertion pass count counts nested criteria; aggregate
+outcomes remain in the details. Grader prices use the package's documented
+recorded-price method and require matching recorded model identity.
 
 ## Replay a scored result for formatting
 
@@ -186,6 +190,19 @@ checks pass. Update this changelog, create the immutable version tag and GitHub
 release, then advance the matching major tag. Consumers should pin the release's
 full commit SHA; moving major tags are available for callers that opt into updates.
 Action releases do not publish the provider package to npm.
+
+### GitHub Marketplace
+
+The repository contains one root Action, named **oh-my-promptfoo Evals**. To list
+a verified release, edit that release on GitHub, select **Publish this Action to
+the GitHub Marketplace**, choose **Testing** as its primary category, and update
+the release. An organization owner must accept the Marketplace Developer Agreement
+before the first listing; GitHub also requires two-factor authentication.
+
+Tags and GitHub releases can be automated through the public API. GitHub's
+documented Marketplace publication step uses the release web form; its public
+Releases API exposes no Marketplace publication field. See
+[GitHub's publication guide](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/publish-in-github-marketplace).
 
 ## Development
 
