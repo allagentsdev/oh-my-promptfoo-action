@@ -132,7 +132,7 @@ output and sharing ownership stay with the Action.
 ### Use packages installed by the caller
 
 For environments that require their own dependency installation and registry
-controls, install exact `oh-my-promptfoo@1.30.1` and `promptfoo@0.125.1` pins through
+controls, install exact `oh-my-promptfoo@1.30.2` and `promptfoo@0.125.1` pins through
 your checked-in manifest/lockfile and approved registry before this step:
 
 ```yaml
@@ -173,6 +173,10 @@ feed. Select installed mode when the caller must own the entire dependency route
 | `artifact-retention-days` | `0`                   | Use repository retention; a positive override is capped by repository policy                  |
 | `artifact-name`           | Generated unique name | Optional unique upload name                                                                   |
 | `suite-number`            | `1`                   | Legacy JSON reference; never displayed in suite cards                                         |
+
+With public labels enabled, an assertion uses its metric name. Unnamed `skill-used`
+and `not-skill-used` checks use their string skill target; other unnamed checks
+keep a numbered fallback. Other assertion values remain private.
 
 ## Outputs and privacy
 
