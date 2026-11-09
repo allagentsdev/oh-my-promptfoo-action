@@ -7,6 +7,47 @@ on:
 permissions:
   contents: read
 jobs:
+  installed:
+    name: Run Evals - Caller-installed runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Install the caller's exact public package pins
+        run: |
+          node --input-type=module <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync} from 'node:fs';
+          import {join} from 'node:path';
+          const {installed} = JSON.parse(readFileSync('toolchain.json', 'utf8'));
+          execFileSync('npm', ['install', '--prefix', join(process.env.RUNNER_TEMP, 'installed-runtime'), '--no-save', '--no-package-lock', '--ignore-scripts', '--include=optional', '--no-audit', '--no-fund', `oh-my-promptfoo@${installed.packageVersion}`, `promptfoo@${installed.promptfooVersion}`], {stdio:'inherit'});
+          NODE
+      - uses: ./
+        id: eval
+        with:
+          toolchain-mode: installed
+          dependency-directory: ${{ runner.temp }}/installed-runtime/node_modules
+          config: examples/ci/release/promptfooconfig.yaml
+          public-labels: "true"
+          upload-results: "true"
+          args-json: '["--no-cache"]'
+      - name: Verify native results and installed reporting exports
+        env:
+          EVAL_STATUS: ${{ steps.eval.outputs.evaluation-status }}
+          EVAL_RESULTS: ${{ steps.eval.outputs.result-path }}
+          EVAL_ARTIFACT: ${{ steps.eval.outputs.result-artifact-url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          assert.equal(process.env.EVAL_STATUS, 'pass');
+          assert.ok(process.env.EVAL_ARTIFACT);
+          const result = JSON.parse(readFileSync(process.env.EVAL_RESULTS, 'utf8'));
+          assert.equal(result.results.results.length, 4);
+          assert.ok(result.results.results.every(row => row.success));
+          NODE
   behavior:
     name: Action behavior
     runs-on: ubuntu-latest
