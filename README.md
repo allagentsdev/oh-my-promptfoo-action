@@ -44,6 +44,40 @@ details, latency, and separate candidate/grader usage and cost. Missing
 measurements and failed-grader spend remain unknown. Costs use four decimal
 places, with more precision when positive spend would otherwise display as zero.
 
+## Replay a scored result for formatting
+
+Select the replay result provider at runtime to render an approved scored-result
+JSON without making candidate or grader calls:
+
+```yaml
+- uses: allagentsdev/oh-my-promptfoo-action@<reviewed-commit-sha>
+  with:
+    execution-mode: replay
+    replay-results: .recording/scored-results.json
+    config: evals/release/promptfooconfig.yaml
+    public-labels: "true"
+```
+
+Download the capture from the calling repository's approved artifact storage
+before this step. Check out the recorded suite revision for accurate source
+links. The config is source context only: replay never loads its providers,
+reruns assertions or rebuilds an agent workspace. Keep captures containing raw
+answers and judge reasons private; do not commit them to this public repository.
+
+Replay uses the package's existing local reporter, labels the summary and console
+as recorded, and preserves saved native per-case outcomes and measurements.
+Latency, tokens and costs describe the original run. The `replayed` output is
+`true`; the native CLI exit code is `unknown` because no native CLI ran. For
+exports without an original process exit code, the existing conservative
+report-only gate applies. Recorded failures, errors, invalid files and zero
+coverage keep failing. Replay is a formatting check, not a fresh release gate.
+
+Native argument filters apply to live evaluation. Replay renders the entire
+saved export and requires an empty `args-json` array and no `args-file`. An
+invalid mode or a replay file supplied in live mode fails before any evaluation.
+The default remains `execution-mode: live`; replay never falls back to live
+calls. Uploads remain opt-in in both modes.
+
 ## Fixed release regression
 
 The credential-free [release suite](examples/ci/release/promptfooconfig.yaml)
@@ -92,6 +126,8 @@ output and sharing ownership stay with the Action.
 | Input                     | Default               | Purpose                                                                                    |
 | ------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
 | `config`                  | Required              | One native config, relative to `working-directory`                                         |
+| `execution-mode`          | `live`                | `live` evaluates; `replay` renders saved scored results without model calls                |
+| `replay-results`          | Empty                 | Native scored-result JSON relative to `working-directory`, required only for replay        |
 | `args-json`               | `[]`                  | JSON array of native argument strings; use only public values because GitHub prints inputs |
 | `args-file`               | Empty                 | Private JSON argument-array file, relative to `working-directory`                          |
 | `working-directory`       | `.`                   | Caller directory from which to run Promptfoo                                               |
@@ -127,15 +163,15 @@ uploads produce no placeholder link. Artifact upload uses the official pinned
 ## Pinned toolchain and local use
 
 [toolchain.json](toolchain.json) pins the exact public `oh-my-promptfoo` source
-commit containing the eval/report CLI. The current published npm package does not
-yet contain those exports. The Action fetches that immutable commit into a fresh
+commit containing the eval/report CLI and replay support. The Action fetches
+that immutable commit into a fresh
 runner temporary directory, installs its frozen lockfile without dependency
 scripts, then builds and invokes the package. It does not execute a floating
 branch or latest npm version. Node 22.22.1, pnpm 10.34.7 and Promptfoo 0.125.1 are
 pinned. GitHub credentials are not needed to fetch the public source.
 
 The same CLI and reporting helpers work locally; see the
-[package's local reporting documentation](https://github.com/allagentsdev/oh-my-promptfoo/blob/7b4a47ae068a4a7be4da22802265c2663bd18140/docs/ci-action.md).
+[package's local reporting documentation](https://github.com/allagentsdev/oh-my-promptfoo/blob/b73eea56b5ebeba96abdcf805902095770a0d874/docs/ci-action.md).
 Package publication and Action tags are separate release decisions. To update
 this Action's toolchain, change the source pin in a PR and pass all behavior and
 hosted artifact checks before publishing a new Action commit/tag. Keep the tested

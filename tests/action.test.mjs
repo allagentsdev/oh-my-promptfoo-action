@@ -45,6 +45,9 @@ async function evaluate(directory, config, args, extra = {}) {
   const summary = `${output}.md`;
   const step = action.runs.steps.find((item) => item.id === "evaluate");
   const child = shell(step, directory, {
+    OMP_ACTION_PATH: root,
+    OMP_EXECUTION_MODE: "live",
+    OMP_REPLAY_RESULTS: "",
     OMP_CLI_PATH: cli,
     OMP_CONFIG: config,
     OMP_ARGS: JSON.stringify(args),
@@ -165,6 +168,69 @@ test("real native selection preserves repeated metadata, seeded samples and lite
   }
 });
 
+test("runtime replay renders captured native rows without loading providers and keeps their original measurements", async () => {
+  const directory = await mkdtemp(join(process.env.RUNNER_TEMP, "replay caller "));
+  try {
+    const config = join(directory, "promptfooconfig.yaml");
+    const authored = stringify({
+      description: "Recorded native suite",
+      prompts: ["PRIVATE_ANSWER"],
+      providers: ["echo"],
+      tests: [
+        { description: "One recorded test", assert: [{ type: "equals", value: "PRIVATE_ANSWER" }] },
+      ],
+    });
+    await writeFile(config, authored);
+    const captured = await evaluate(directory, config, ["--no-cache"]);
+    assert.equal(captured.status, 0);
+    const original = await readFile(captured.values["result-path"], "utf8");
+    await writeFile(
+      config,
+      "throw new Error('Replay must never load this config or its providers');",
+    );
+    const replay = await evaluate(directory, config, [], {
+      OMP_EXECUTION_MODE: "replay",
+      OMP_REPLAY_RESULTS: captured.values["result-path"],
+    });
+    assert.equal(replay.status, 0, replay.stdout + replay.stderr);
+    assert.equal(replay.values.replayed, "true");
+    assert.equal(replay.values["evaluation-exit-code"], "unknown");
+    assert.ok(replay.summary.includes("Replay — recorded evaluation"));
+    assert.ok(!replay.stdout.includes("Completed 1") && !replay.summary.includes("PRIVATE_ANSWER"));
+    const report = await json(replay.values["report-path"]);
+    delete report.replayed;
+    assert.deepEqual(report, await json(captured.values["report-path"]));
+    assert.equal(await readFile(captured.values["result-path"], "utf8"), original);
+    await writeFile(config, authored);
+    for (const [mode, result, args] of [
+      ["typo", "", "[]"],
+      ["live", captured.values["result-path"], "[]"],
+      ["replay", "", "[]"],
+      ["replay", captured.values["result-path"], '["--filter-sample","1"]'],
+    ]) {
+      const output = join(directory, crypto.randomUUID());
+      const child = shell(
+        action.runs.steps.find((s) => s.id === "evaluate"),
+        directory,
+        {
+          OMP_ACTION_PATH: root,
+          OMP_CLI_PATH: cli,
+          OMP_CONFIG: config,
+          OMP_ARGS: args,
+          OMP_ARGS_FILE: "",
+          OMP_EXECUTION_MODE: mode,
+          OMP_REPLAY_RESULTS: result,
+          GITHUB_OUTPUT: output,
+        },
+      );
+      assert.equal(child.status, 1);
+      assert.ok(!existsSync(output) && !child.stdout.includes("Evaluation started"));
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("a private argument file reaches native evaluation without appearing in public output", async () => {
   const directory = await mkdtemp(join(process.env.RUNNER_TEMP, "private caller "));
   try {
@@ -231,6 +297,16 @@ test("assertion failure retains raw results and makes an approved redacted artif
     const run = await evaluate(directory, config, ["--no-cache"]);
     assert.equal(run.status, 1);
     assert.equal(run.values["evaluation-status"], "fail");
+    const replay = await evaluate(directory, config, [], {
+      OMP_EXECUTION_MODE: "replay",
+      OMP_REPLAY_RESULTS: run.values["result-path"],
+    });
+    assert.equal(replay.status, 1);
+    assert.equal(replay.values.replayed, "true");
+    assert.equal(replay.values["evaluation-status"], "fail");
+    const replayReport = await json(replay.values["report-path"]);
+    delete replayReport.replayed;
+    assert.deepEqual(replayReport, await json(run.values["report-path"]));
     assert.equal(run.values["evaluation-exit-code"], "100");
     assert.equal(run.values["results-available"], "true");
     assert.ok(existsSync(run.values["log-path"]));
@@ -309,6 +385,14 @@ test("provider errors and zero coverage remain failing gates with unknown candid
       const run = await evaluate(directory, config, args);
       assert.equal(run.status, 1);
       assert.equal(run.values["evaluation-status"], "error");
+      const replay = await evaluate(directory, config, [], {
+        OMP_EXECUTION_MODE: "replay",
+        OMP_REPLAY_RESULTS: run.values["result-path"],
+      });
+      assert.equal(replay.status, 1);
+      assert.equal(replay.values.replayed, "true");
+      assert.equal(replay.values["evaluation-status"], "error");
+      assert.ok(replay.summary.includes("unknown"));
       assert.ok(existsSync(run.values["log-path"]) && existsSync(run.values["report-path"]));
       assert.ok(run.summary.includes("unknown"));
       assert.ok(
