@@ -10,8 +10,10 @@ owns the root-level GitHub Action and its integration checks.
 
 ## Use from another repository
 
-Replace `<reviewed-commit-sha>` with a reviewed commit from this repository. No
-Action release tag has been published yet. The config and its datasets belong to
+Replace `<reviewed-commit-sha>` with the full commit SHA of a reviewed
+[Action release](https://github.com/allagentsdev/oh-my-promptfoo-action/releases).
+Stable releases use immutable `vX.Y.Z` tags; `v1` tracks compatible 1.x releases.
+Pinning the full SHA keeps the Action immutable. The config and its datasets belong to
 the calling repository. Install the caller's locked dependencies first if its
 config references packages. Credentials and workflow permissions are the caller's
 responsibility.
@@ -176,6 +178,14 @@ Package publication and Action tags are separate release decisions. To update
 this Action's toolchain, change the source pin in a PR and pass all behavior and
 hosted artifact checks before publishing a new Action commit/tag. Keep the tested
 dependency versions together; do not substitute a floating source ref.
+
+## Action releases
+
+Publish from a reviewed `main` commit after the Action behavior and hosted artifact
+checks pass. Update this changelog, create the immutable version tag and GitHub
+release, then advance the matching major tag. Consumers should pin the release's
+full commit SHA; moving major tags are available for callers that opt into updates.
+Action releases do not publish the provider package to npm.
 
 ## Development
 
