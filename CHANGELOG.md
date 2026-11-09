@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 - 2026-11-09
 
 - Select live or replay execution at runtime. Replay reads an approved native scored-result file through the shared package reporter, skips candidate/grader calls and labels all measurements as historical. Live remains the default.
 
