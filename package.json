@@ -8,7 +8,7 @@
   },
   "scripts": {
     "lint": "biome check .",
-    "test": "node --test --test-concurrency=1 tests/action.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

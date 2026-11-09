@@ -129,20 +129,50 @@ output and sharing ownership stay with the Action.
 
 ## Inputs
 
-| Input                     | Default               | Purpose                                                                                    |
-| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
-| `config`                  | Required              | One native config, relative to `working-directory`                                         |
-| `execution-mode`          | `live`                | `live` evaluates; `replay` renders saved scored results without model calls                |
-| `replay-results`          | Empty                 | Native scored-result JSON relative to `working-directory`, required only for replay        |
-| `args-json`               | `[]`                  | JSON array of native argument strings; use only public values because GitHub prints inputs |
-| `args-file`               | Empty                 | Private JSON argument-array file, relative to `working-directory`                          |
-| `working-directory`       | `.`                   | Caller directory from which to run Promptfoo                                               |
-| `output-directory`        | `.promptfoo-ci`       | Parent of a fresh invocation directory                                                     |
-| `public-labels`           | `false`               | Approve suite/test/provider/assertion labels and source paths in summaries                 |
-| `upload-results`          | `false`               | Approve a credential-redacted scored-result artifact in the calling repository             |
-| `artifact-retention-days` | `0`                   | Use repository retention; a positive override is capped by repository policy               |
-| `artifact-name`           | Generated unique name | Optional unique upload name                                                                |
-| `suite-number`            | `1`                   | Legacy JSON reference; never displayed in suite cards                                      |
+### Use packages installed by the caller
+
+For environments that require their own dependency installation and registry
+controls, install exact `oh-my-promptfoo@1.30.1` and `promptfoo@0.125.1` pins through
+your checked-in manifest/lockfile and approved registry before this step:
+
+```yaml
+- uses: allagentsdev/oh-my-promptfoo-action@<reviewed-commit-sha>
+  with:
+    toolchain-mode: installed
+    dependency-directory: evals/node_modules
+    config: evals/release/promptfooconfig.yaml
+    public-labels: "true"
+```
+
+Installed mode skips pnpm setup, source cloning, dependency installation and
+building. It verifies the exact package version, the Promptfoo version resolved
+by that package, its public CLI binary and its public reporting export against
+[toolchain.json](toolchain.json). Missing or mismatched installations fail before
+evaluation, with no source or registry fallback. The caller owns provider/SDK
+installation, lockfiles, credentials and registry policy. Node remains pinned by
+the Action. This mode supports both live evaluation and recorded replay.
+
+The default `source` mode builds the reviewed immutable source and frozen
+lockfile, including any explicit source dependencies in that lockfile. Its registry
+installs inherit caller configuration; installs fail without retrying a different
+feed. Select installed mode when the caller must own the entire dependency route.
+
+| Input                     | Default               | Purpose                                                                                       |
+| ------------------------- | --------------------- | --------------------------------------------------------------------------------------------- |
+| `toolchain-mode`          | `source`              | Build reviewed source, or verify/use exact caller-installed packages with `installed`         |
+| `dependency-directory`    | Empty                 | Caller node_modules directory relative to working-directory; required only for installed mode |
+| `config`                  | Required              | One native config, relative to `working-directory`                                            |
+| `execution-mode`          | `live`                | `live` evaluates; `replay` renders saved scored results without model calls                   |
+| `replay-results`          | Empty                 | Native scored-result JSON relative to `working-directory`, required only for replay           |
+| `args-json`               | `[]`                  | JSON array of native argument strings; use only public values because GitHub prints inputs    |
+| `args-file`               | Empty                 | Private JSON argument-array file, relative to `working-directory`                             |
+| `working-directory`       | `.`                   | Caller directory from which to run Promptfoo                                                  |
+| `output-directory`        | `.promptfoo-ci`       | Parent of a fresh invocation directory                                                        |
+| `public-labels`           | `false`               | Approve suite/test/provider/assertion labels and source paths in summaries                    |
+| `upload-results`          | `false`               | Approve a credential-redacted scored-result artifact in the calling repository                |
+| `artifact-retention-days` | `0`                   | Use repository retention; a positive override is capped by repository policy                  |
+| `artifact-name`           | Generated unique name | Optional unique upload name                                                                   |
+| `suite-number`            | `1`                   | Legacy JSON reference; never displayed in suite cards                                         |
 
 ## Outputs and privacy
 
@@ -175,6 +205,12 @@ runner temporary directory, installs its frozen lockfile without dependency
 scripts, then builds and invokes the package. It does not execute a floating
 branch or latest npm version. Node 22.22.1, pnpm 10.34.7 and Promptfoo 0.125.1 are
 pinned. GitHub credentials are not needed to fetch the public source.
+
+Dependency installs inherit the caller's package-manager configuration, including
+`NPM_CONFIG_REGISTRY` and `NPM_CONFIG_USERCONFIG`. Configure an approved registry
+and its credentials before invoking the Action. Install or authentication failures
+fail the Action; it does not retry another registry. The source and frozen lockfile
+still own package versions and integrity hashes.
 
 The same CLI and reporting helpers work locally; see the
 [package's local reporting documentation](https://github.com/allagentsdev/oh-my-promptfoo/blob/b73eea56b5ebeba96abdcf805902095770a0d874/docs/ci-action.md).
