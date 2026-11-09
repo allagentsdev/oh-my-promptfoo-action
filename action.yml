@@ -117,6 +117,7 @@ runs:
         OMP_EXECUTION_MODE: ${{ inputs.execution-mode }}
         OMP_REPLAY_RESULTS: ${{ inputs.replay-results }}
         OMP_CLI_PATH: ${{ steps.runtime.outputs.cli-path }}
+        ALLAGENTS_EVAL_TOOLCHAIN_MS: ${{ steps.runtime.outputs.toolchain-duration-ms }}
         OMP_CONFIG: ${{ inputs.config }}
         OMP_ARGS: ${{ inputs.args-json }}
         OMP_ARGS_FILE: ${{ inputs.args-file }}

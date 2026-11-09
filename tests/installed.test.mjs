@@ -80,6 +80,8 @@ require('node:module').syncBuiltinESMExports();\n`,
       });
     await prepare();
     const runtime = outputs(await readFile(preparedOutput, "utf8"));
+    assert.ok(Number.isFinite(Number(runtime["toolchain-duration-ms"])));
+    assert.ok(Number(runtime["toolchain-duration-ms"]) > 0);
     assert.equal(await readFile(attempts, "utf8"), "");
     assert.ok(
       runtime["cli-path"].startsWith(await realpath(join(caller, "node_modules/oh-my-promptfoo"))),
@@ -108,6 +110,7 @@ require('node:module').syncBuiltinESMExports();\n`,
       ...process.env,
       OMP_ACTION_PATH: root,
       OMP_CLI_PATH: runtime["cli-path"],
+      ALLAGENTS_EVAL_TOOLCHAIN_MS: runtime["toolchain-duration-ms"],
       OMP_CONFIG: config,
       OMP_EXECUTION_MODE: "live",
       OMP_REPLAY_RESULTS: "",

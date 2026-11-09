@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const action = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const started = performance.now();
 const mode = process.env.OMP_TOOLCHAIN_MODE || "source";
 const dependencies = process.env.OMP_DEPENDENCY_DIRECTORY;
 if (!["source", "installed"].includes(mode))
@@ -12,6 +13,7 @@ if (!["source", "installed"].includes(mode))
 if ((mode === "installed") !== Boolean(dependencies))
   throw new Error("dependency-directory is required only with toolchain-mode installed");
 const output = async (values) => {
+  if (process.argv[2] !== "--setup") values["toolchain-duration-ms"] = performance.now() - started;
   for (const [key, value] of Object.entries(values)) {
     const delimiter = crypto.randomUUID();
     await appendFile(process.env.GITHUB_OUTPUT, `${key}<<${delimiter}\n${value}\n${delimiter}\n`);

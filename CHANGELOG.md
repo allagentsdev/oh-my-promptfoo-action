@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Use the reviewed source reporter to explain unavailable measurements and show collapsed execution timing. Measure runtime preparation through the existing evaluation environment.
+
+- Keep the README focused on getting started, with the full reference and a source-backed comparison with the official Promptfoo Action under docs/.
+
 ## 1.1.1 - 2026-11-09
 
 - Use the reviewed reporter that names unlabelled `skill-used` and `not-skill-used` checks after their string skill targets when public labels are enabled. Keep explicit metrics first and other assertion values private.

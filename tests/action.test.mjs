@@ -154,6 +154,8 @@ test("real native selection preserves repeated metadata, seeded samples and lite
       const run = await evaluate(directory, config, args);
       assert.equal(run.status, 0, run.stdout + run.stderr);
       assert.equal(run.values["evaluation-status"], "pass");
+      const timings = (await json(run.values["report-path"])).timings;
+      assert.ok(timings.setupMs > 0 && timings.nativeEvaluationMs > 0 && timings.reportingMs >= 0);
       const rows = (await json(run.values["result-path"])).results.results;
       assert.equal(rows.length, 2);
       assert.ok(rows.every((row) => row.success && row.response.output === literal));
@@ -204,7 +206,10 @@ test("runtime replay renders captured native rows without loading providers and 
     assert.ok(!replay.stdout.includes("Completed 1") && !replay.summary.includes("PRIVATE_ANSWER"));
     const report = await json(replay.values["report-path"]);
     delete report.replayed;
-    assert.deepEqual(report, await json(captured.values["report-path"]));
+    const originalReport = await json(captured.values["report-path"]);
+    delete report.timings;
+    delete originalReport.timings;
+    assert.deepEqual(report, originalReport);
     assert.equal(await readFile(captured.values["result-path"], "utf8"), original);
     await writeFile(config, authored);
     for (const [mode, result, args] of [
@@ -311,12 +316,16 @@ test("assertion failure retains raw results and makes an approved redacted artif
     assert.equal(replay.values["evaluation-status"], "fail");
     const replayReport = await json(replay.values["report-path"]);
     delete replayReport.replayed;
-    assert.deepEqual(replayReport, await json(run.values["report-path"]));
+    const liveReport = await json(run.values["report-path"]);
+    delete replayReport.timings;
+    delete liveReport.timings;
+    assert.deepEqual(replayReport, liveReport);
     assert.equal(run.values["evaluation-exit-code"], "100");
     assert.equal(run.values["results-available"], "true");
     assert.ok(existsSync(run.values["log-path"]));
     assert.ok((await readFile(run.values["result-path"], "utf8")).includes("PRIVATE_ANSWER"));
     assert.ok(run.summary.includes("## Evals — ❌ FAIL") && run.summary.includes("unknown"));
+    assert.ok(run.summary.includes("Agent cost: not reported"));
     assert.ok(!run.stdout.includes("PRIVATE_ANSWER") && !run.summary.includes("PRIVATE_ANSWER"));
     const output = join(directory, "artifact-output");
     const env = {

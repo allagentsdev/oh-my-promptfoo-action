@@ -92,6 +92,7 @@ jobs:
           STATUS: ${{ steps.eval.outputs.evaluation-status }}
           RESULTS: ${{ steps.eval.outputs.result-path }}
           SUMMARY: ${{ steps.eval.outputs.summary-path }}
+          REPORT: ${{ steps.eval.outputs.report-path }}
           ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
         run: |
           node --input-type=module <<'NODE'
@@ -104,6 +105,9 @@ jobs:
           const summary = await readFile(process.env.SUMMARY, 'utf8');
           for (const span of ['L8-L16','L17-L25','L26-L34','L35-L43']) assert.ok(summary.includes(`examples/ci/release/promptfooconfig.yaml#${span}`));
           assert.ok(summary.includes('## Evals — ✅ PASS'));
+          const report = JSON.parse(await readFile(process.env.REPORT, 'utf8'));
+          assert.ok(report.timings.toolchainMs > 0 && report.timings.nativeEvaluationMs > 0);
+          assert.ok(summary.includes('<details><summary>Run timing</summary>'));
           assert.match(process.env.ARTIFACT_URL, /^https:\/\/github\.com\/allagentsdev\/oh-my-promptfoo-action\/.+\/artifacts\/\d+$/);
           assert.ok(summary.includes(process.env.ARTIFACT_URL));
           NODE
