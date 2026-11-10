@@ -45,7 +45,7 @@ remain available when assertions fail.
 - [Use packages installed by the caller](docs/usage.md#use-packages-installed-by-the-caller)
 - [All inputs, outputs and artifact settings](docs/usage.md#inputs)
 - [Comparison with the official Promptfoo Action](docs/official-action-comparison.md)
-- [Migration guide, PR comments, viewer sharing and existing CLI runs](docs/migration.md)
+- [PR comments, viewer sharing and existing CLI runs](docs/migration.md)
 - [Local CLI, providers, graders and reporting](https://github.com/allagentsdev/oh-my-promptfoo)
 
 The [official Promptfoo Action](https://github.com/promptfoo/promptfoo-action) may

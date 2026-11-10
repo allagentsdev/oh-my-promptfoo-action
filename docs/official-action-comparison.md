@@ -36,9 +36,15 @@ use them with another Promptfoo runner too. The package reporter also accepts na
 JSON from a direct CLI run.
 
 This Action keeps evaluation, providers and scoring in Promptfoo. Caller workflows
-own changed-file filtering and cache persistence. The [migration guide](migration.md)
-maps official inputs and records deliberate differences, including reviewed toolchain
-pins and the lack of a custom per-test M-of-N repeat gate.
+own changed-file filtering, source preparation and cache persistence. The
+[migration guide](migration.md#what-belongs-in-the-action) describes those boundaries
+and maps official inputs. Reviewed toolchain pins and native repeated-run outcomes
+remain part of that contract; cache metrics can be added when a consumer needs them.
+
+Consumers should be able to remove their evaluator launcher, progress hooks,
+reporter and accounting code. Repository-specific suite discovery, dependency
+installation and source-policy checks can stay in the calling repository. Full
+compatibility with the official Action's helper inputs is not a release requirement.
 
 The official Action does not currently expose arbitrary argument arrays or a retained
 result-path output. Those interfaces would let us consider reusing its runner without

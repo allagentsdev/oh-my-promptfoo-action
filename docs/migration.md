@@ -1,14 +1,30 @@
 # Migrating from the official Promptfoo Action
 
 Both Actions run authored native Promptfoo configs. This Action adds detailed GitHub
-reports, retained results and replay. It does not yet cover every official Action
-workflow. The inventory below records the gaps and the behavior required to close
-them without moving evaluation or scoring into the Action.
+reports, retained results and replay. The input mapping below helps adapt an existing
+workflow; this Action does not reproduce every official Action helper.
+
+## What belongs in the Action
+
+The Action runs one authored suite, reports native outcomes and retains results on
+failure. The public package CLI provides the same evaluation and reporting locally.
+Promptfoo owns selection, providers, assertions and scoring.
+
+Caller workflows choose suites, triggers, matrix jobs, credentials, source preparation
+and cache storage. Repository-specific source authorization and preparation checks
+can remain around the Action without duplicating evaluation or reporting.
+
+The toolchain stays pinned to reviewed versions. Cache persistence uses `actions/cache`;
+the Action adds no automatic seven-day cleanup. Cache size and file-count outputs
+are omitted and can be added if a consumer needs them. Native `--repeat` is supported,
+but the Action adds no per-test M-of-N gate that changes the native result.
+
+## Compare capabilities
 
 Compared with official commit
 [`6a8612f`](https://github.com/promptfoo/promptfoo-action/tree/6a8612f15670b4d5a4d43e0d6fb221d84ab389d8).
 
-| Official capability                                       | Current support                                | Compatibility requirement                                                                         |
+| Official capability                                       | Current support                                | Behavior                                                                                          |
 | --------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Native configs, datasets, assertions and custom providers | Supported                                      | Keep Promptfoo responsible for evaluation and authored scoring.                                   |
 | Provider keys and environment files                       | Native environment variables and CLI arguments | Document the mapping; do not add stored-login or PAT fallbacks.                                   |
@@ -16,12 +32,12 @@ Compared with official commit
 | PR comments                                               | `post-comment: "true"`                         | Post or update sanitized counts and report links using only an explicitly supplied token.         |
 | Promptfoo viewer sharing                                  | `share: "true"`                                | Use the pinned public CLI, expose the viewer URL and keep uploads disabled by default.            |
 | Reporting an existing CLI run                             | `execution-mode: report`                       | Require its native exit code, preserve errors and failures, and never call candidates or graders. |
-| Changed-prompt and dependency detection                   | Caller workflow                                | Provide an example using existing workflow filtering tools.                                       |
-| Persistent cache                                          | Caller workflow                                | Provide an `actions/cache` example; distinguish persistence from native cache metrics.            |
-| Cache metrics and cleanup                                 | No equivalent outputs                          | Document this remaining difference.                                                               |
-| Exact arbitrary CLI version                               | Reviewed pinned toolchain                      | Keep reviewed pins and document the deliberate version restriction.                               |
+| Changed-prompt and dependency detection                   | Caller workflow                                | Explicit workflow path filters; no automatic dependency discovery.                                |
+| Persistent cache                                          | Caller workflow                                | Use `actions/cache` with the native response-cache path.                                          |
+| Cache metrics and cleanup                                 | No equivalent outputs                          | No cache size/file-count outputs or automatic age-based deletion.                                 |
+| Exact arbitrary CLI version                               | Reviewed pinned toolchain                      | CLI and reporter versions are tested and pinned together.                                         |
 | Aggregate success-rate threshold                          | Native pass-rate environment variable          | Document native policy without overriding critical errors or zero coverage.                       |
-| Per-test `repeat-min-pass`                                | No equivalent                                  | Inspect the pinned native contract; retain the gap if it requires a second scoring policy.        |
+| Per-test `repeat-min-pass`                                | No equivalent                                  | Native repetitions retain their outcomes; no additional M-of-N scoring policy.                    |
 
 ## Acceptance checks
 

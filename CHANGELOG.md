@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clarify which responsibilities belong to the Action and which stay in caller workflows. Describe supported official Action mappings without promising every helper input.
+
 - Add optional sanitized PR comments and native Promptfoo viewer sharing. Keep both off by default, use explicit caller credentials, and expose their confirmed URLs.
 
 - Report a current external native evaluation with its original exit code, preserving failures, runtime errors and native scoring policy without rerunning models. Document official Action migration mappings, workflow filtering, persistent caching and remaining gaps.
