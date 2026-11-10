@@ -54,10 +54,10 @@ remains separate. There is no claim of a lossless drop-in replacement.
 
 ## Sources
 
-Compared official commit `6a8612f15670b4d5a4d43e0d6fb221d84ab389d8` with our released
-v1.1.1 and the compatibility additions documented here. This was source inspection,
+Compared official commit `6a8612f15670b4d5a4d43e0d6fb221d84ab389d8` with our
+v1.2.0. This was source inspection,
 not an execution of the official Action.
 
 - [Official inputs](https://github.com/promptfoo/promptfoo-action/blob/6a8612f15670b4d5a4d43e0d6fb221d84ab389d8/action.yml)
 - [Official execution and reporting](https://github.com/promptfoo/promptfoo-action/blob/6a8612f15670b4d5a4d43e0d6fb221d84ab389d8/src/main.ts#L574-L873)
-- [Our released Action](https://github.com/allagentsdev/oh-my-promptfoo-action/blob/0ea3dc0cdcb611a1ca31e240ea5d1521a3665d51/action.yml)
+- [Our released Action](https://github.com/allagentsdev/oh-my-promptfoo-action/blob/v1.2.0/action.yml)

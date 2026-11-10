@@ -174,12 +174,9 @@ context. There is no historical replay label; `replayed` is `false`.
 The original CLI output stays in private `native.log`; the reporting step prints
 sanitized outcomes.
 
-The current installed pin, `oh-my-promptfoo@1.30.2`, predates original-exit-code
-reporting. Use the default `toolchain-mode: source` for report mode until the
-installed pin advances to the compatible published reporter. Installed report mode
-checks the public CLI help and gives a source-mode instruction when the required
-flag is unavailable; it never falls back to a different toolchain. Live evaluation
-and historical replay continue to work with the existing installed pin.
+Both source and installed modes support reporting current external runs. Installed
+mode requires the exact published pins in [toolchain.json](../toolchain.json);
+neither mode reruns models or falls back to a different toolchain.
 
 The exit code is required: zero preserves the native scoring policy, 100 preserves
 the standard native assertion-failure status, and runtime errors or `unknown` fail
@@ -230,5 +227,5 @@ when every candidate must make fresh calls.
 For the complete fixed release and paired seeded comparison examples, see
 [release regression](usage.md#fixed-release-regression) and
 [offline comparison](usage.md#offline-model-comparison-using-openai). Pin a reviewed
-Action release commit for immutable use. These new integration inputs require the
-release containing them; existing v1.1.1 consumers retain their current behavior.
+Action release commit for immutable use. PR comments, viewer sharing and current
+external-run reporting require v1.2.0 or later.

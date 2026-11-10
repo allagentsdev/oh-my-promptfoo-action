@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 - 2026-11-10
+
+- Align source and caller-installed reporting on `oh-my-promptfoo@1.31.0`, with native `promptfoo@0.125.1`. Verify current external-run reporting with the published package, including original runtime errors and unknown process status.
+
+- Update pinned pnpm setup and artifact upload Actions, and the Biome development dependency.
 
 - Clarify which responsibilities belong to the Action and which stay in caller workflows. Describe supported official Action mappings without promising every helper input.
 

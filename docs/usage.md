@@ -132,7 +132,7 @@ output and sharing ownership stay with the Action.
 ### Use packages installed by the caller
 
 For environments that require their own dependency installation and registry
-controls, install exact `oh-my-promptfoo@1.30.2` and `promptfoo@0.125.1` pins through
+controls, install exact `oh-my-promptfoo@1.31.0` and `promptfoo@0.125.1` pins through
 your checked-in manifest/lockfile and approved registry before this step:
 
 ```yaml
@@ -150,11 +150,9 @@ by that package, its public CLI binary and its public reporting export against
 [toolchain.json](../toolchain.json). Missing or mismatched installations fail before
 evaluation, with no source or registry fallback. The caller owns provider/SDK
 installation, lockfiles, credentials and registry policy. Node remains pinned by
-the Action. This mode supports both live evaluation and recorded replay. The current
-1.30.2 pin cannot report a current external run with its original exit code; use
-source mode for `execution-mode: report` until the compatible reporter is published
-and pinned. An unsupported installed reporter fails with a specific source-mode
-instruction before attempting to render the result.
+the Action. This mode supports live evaluation, current external-run reporting and
+recorded replay. External-run reporting requires the original `native-exit-code`;
+a passing export cannot hide a runtime failure or unknown process status.
 
 The default `source` mode builds the reviewed immutable source and frozen
 lockfile, including any explicit source dependencies in that lockfile. Its registry

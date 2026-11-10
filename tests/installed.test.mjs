@@ -128,25 +128,37 @@ require('node:module').syncBuiltinESMExports();\n`,
       env: evaluation,
     });
     const resultPaths = outputs(await readFile(resultOutput, "utf8"));
-    if (pin.packageVersion === "1.30.2" && !process.env.OMP_INSTALLED_TEST_TARBALL) {
-      const unsupportedOutput = join(temporary, "unsupported-report-outputs");
-      await assert.rejects(
-        execute(process.execPath, [join(root, "scripts/evaluate.mjs")], {
-          cwd: caller,
-          timeout: 30_000,
-          env: {
-            ...evaluation,
-            OMP_EXECUTION_MODE: "report",
-            OMP_TOOLCHAIN_MODE: "installed",
-            OMP_RESULTS: resultPaths["result-path"],
-            OMP_NATIVE_EXIT_CODE: "0",
-            OMP_ARGS: "[]",
-            GITHUB_OUTPUT: unsupportedOutput,
-          },
-        }),
-        (error) => error.stderr.includes("Use toolchain-mode: source"),
-      );
-      await assert.rejects(readFile(unsupportedOutput), { code: "ENOENT" });
+    const originalResult = await readFile(resultPaths["result-path"]);
+    await writeFile(config, "{not-valid: [");
+    for (const [code, status] of [
+      ["0", "pass"],
+      ["1", "error"],
+      ["unknown", "error"],
+    ]) {
+      const externalOutput = join(temporary, `external-report-${code}-outputs`);
+      const external = execute(process.execPath, [join(root, "scripts/evaluate.mjs")], {
+        cwd: caller,
+        timeout: 30_000,
+        env: {
+          ...evaluation,
+          OMP_EXECUTION_MODE: "report",
+          OMP_TOOLCHAIN_MODE: "installed",
+          OMP_RESULTS: resultPaths["result-path"],
+          OMP_NATIVE_EXIT_CODE: code,
+          OMP_ARGS: "[]",
+          GITHUB_OUTPUT: externalOutput,
+        },
+      });
+      if (status === "pass") await external;
+      else await assert.rejects(external, (error) => error.code === 1);
+      const reported = outputs(await readFile(externalOutput, "utf8"));
+      assert.equal(reported["evaluation-status"], status);
+      assert.equal(reported["evaluation-exit-code"], code);
+      assert.equal(reported.replayed, "false");
+      assert.equal(reported["results-available"], "true");
+      assert.deepEqual(await readFile(reported["result-path"]), originalResult);
+      const externalReport = JSON.parse(await readFile(reported["report-path"], "utf8"));
+      assert.deepEqual(externalReport.counts, { pass: 1, fail: 0, error: 0, unknown: 0 });
     }
     assert.equal(resultPaths["evaluation-status"], "pass");
     const report = JSON.parse(await readFile(resultPaths["report-path"], "utf8"));
@@ -154,7 +166,6 @@ require('node:module').syncBuiltinESMExports();\n`,
     assert.equal(report.cases[0].label, "installed-case-1");
     assert.ok(!result.stdout.includes("ANSWER_CANARY"));
     assert.ok(!(await readFile(summary, "utf8")).includes("ANSWER_CANARY"));
-    await writeFile(config, "{not-valid: [");
     const replayOutput = join(temporary, "replay-outputs");
     const replay = await execute("bash", ["-eo", "pipefail", "-c", step.run], {
       cwd: caller,
