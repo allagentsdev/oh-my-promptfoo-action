@@ -92,6 +92,7 @@ jobs:
           STATUS: ${{ steps.eval.outputs.evaluation-status }}
           RESULTS: ${{ steps.eval.outputs.result-path }}
           SUMMARY: ${{ steps.eval.outputs.summary-path }}
+          REPORT: ${{ steps.eval.outputs.report-path }}
           ARTIFACT_URL: ${{ steps.eval.outputs.result-artifact-url }}
         run: |
           node --input-type=module <<'NODE'
@@ -104,6 +105,9 @@ jobs:
           const summary = await readFile(process.env.SUMMARY, 'utf8');
           for (const span of ['L8-L16','L17-L25','L26-L34','L35-L43']) assert.ok(summary.includes(`examples/ci/release/promptfooconfig.yaml#${span}`));
           assert.ok(summary.includes('## Evals — ✅ PASS'));
+          const report = JSON.parse(await readFile(process.env.REPORT, 'utf8'));
+          assert.ok(report.timings.toolchainMs > 0 && report.timings.nativeEvaluationMs > 0);
+          assert.ok(summary.includes('<details><summary>Run timing</summary>'));
           assert.match(process.env.ARTIFACT_URL, /^https:\/\/github\.com\/allagentsdev\/oh-my-promptfoo-action\/.+\/artifacts\/\d+$/);
           assert.ok(summary.includes(process.env.ARTIFACT_URL));
           NODE
@@ -232,4 +236,65 @@ jobs:
           assert.equal(rows[0].success, false);
           assert.equal(rows[0].response.output, 'READY');
           assert.ok(rows[0].gradingResult.reason);
+          NODE
+  external-report:
+    name: Run Evals - Current external CLI report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+      - name: Prepare the reviewed native CLI
+        id: runtime
+        run: node scripts/prepare-toolchain.mjs
+      - name: Run the native CLI with an intentional assertion failure
+        id: native
+        env:
+          NATIVE_CLI: ${{ steps.runtime.outputs.promptfoo-cli-path }}
+          PROMPTFOO_DISABLE_SHARING: "1"
+          PROMPTFOO_DISABLE_TELEMETRY: "1"
+          PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/external-profile
+          PROMPTFOO_FAILED_TEST_EXIT_CODE: "100"
+        run: |
+          mkdir -p .promptfoo-ci
+          set +e
+          node "$NATIVE_CLI" eval --config tests/fixtures/ci-artifact-failure.yaml --no-share --no-write --no-cache --output .promptfoo-ci/external.json > .promptfoo-ci/external.log 2>&1
+          native_exit=$?
+          printf 'exit-code=%s\n' "$native_exit" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: ./
+        id: report
+        continue-on-error: true
+        with:
+          execution-mode: report
+          results: .promptfoo-ci/external.json
+          native-exit-code: ${{ steps.native.outputs.exit-code || 'unknown' }}
+          config: tests/fixtures/ci-artifact-failure.yaml
+          upload-results: "true"
+          artifact-retention-days: "1"
+      - name: Verify the original gate and retained external result
+        env:
+          STATUS: ${{ steps.report.outputs.evaluation-status }}
+          EXIT: ${{ steps.report.outputs.evaluation-exit-code }}
+          REPLAYED: ${{ steps.report.outputs.replayed }}
+          ARTIFACT: ${{ steps.report.outputs.result-artifact-url }}
+          RESULT: ${{ steps.report.outputs.result-path }}
+          OUTCOME: ${{ steps.report.outcome }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          assert.equal(process.env.OUTCOME, 'failure');
+          assert.equal(process.env.STATUS, 'fail');
+          assert.equal(process.env.EXIT, '100');
+          assert.equal(process.env.REPLAYED, 'false');
+          assert.ok(process.env.ARTIFACT);
+          assert.equal(JSON.parse(await readFile(process.env.RESULT, 'utf8')).results.results.length, 1);
           NODE

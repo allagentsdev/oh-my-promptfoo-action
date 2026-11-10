@@ -11,10 +11,16 @@ inputs:
     description: Caller-installed node_modules directory relative to working-directory; required only with toolchain-mode installed
     default: ""
   execution-mode:
-    description: live evaluates the authored config; replay renders a recorded scored result without candidate or grader calls
+    description: live evaluates; report renders a current external run with its exit code; replay renders historical results
     default: "live"
   replay-results:
     description: Native scored-result JSON relative to working-directory; required only in replay mode
+    default: ""
+  results:
+    description: Native JSON from a current external CLI run, relative to working-directory; required only in report mode
+    default: ""
+  native-exit-code:
+    description: Original CLI process exit code (0-255 or unknown); required only in report mode
     default: ""
   config:
     description: One local Promptfoo config file, relative to working-directory
@@ -46,7 +52,28 @@ inputs:
   artifact-name:
     description: Optional unique artifact name; defaults to a generated name for this invocation
     default: ""
+  share:
+    description: Explicitly approve sharing the scored result through the native Promptfoo CLI using caller-configured cloud or self-hosted credentials
+    default: "false"
+  post-comment:
+    description: Post or update a sanitized result comment on the current pull request
+    default: "false"
+  github-token:
+    description: Explicit GitHub token for PR comments; grant pull-requests write and set comment-author when using a custom user or App token
+    default: ""
+  comment-author:
+    description: GitHub login that owns the comment; use the supplied token's user or App bot login
+    default: "github-actions[bot]"
+  comment-key:
+    description: Stable comment identity; set a distinct key for each matrix suite or candidate (defaults to working-directory/config)
+    default: ""
 outputs:
+  viewer-url:
+    description: Credential-free Promptfoo viewer URL after explicitly enabled sharing succeeds
+    value: ${{ steps.share.outputs.viewer-url }}
+  comment-url:
+    description: URL of the posted or updated PR comment; empty when commenting is disabled or this event has no pull request
+    value: ${{ steps.comment.outputs.comment-url }}
   replayed:
     description: true when the report uses recorded results and no candidate or grader calls were made
     value: ${{ steps.evaluate.outputs.replayed }}
@@ -116,7 +143,11 @@ runs:
         OMP_ACTION_PATH: ${{ github.action_path }}
         OMP_EXECUTION_MODE: ${{ inputs.execution-mode }}
         OMP_REPLAY_RESULTS: ${{ inputs.replay-results }}
+        OMP_TOOLCHAIN_MODE: ${{ inputs.toolchain-mode }}
+        OMP_RESULTS: ${{ inputs.results }}
+        OMP_NATIVE_EXIT_CODE: ${{ inputs.native-exit-code }}
         OMP_CLI_PATH: ${{ steps.runtime.outputs.cli-path }}
+        ALLAGENTS_EVAL_TOOLCHAIN_MS: ${{ steps.runtime.outputs.toolchain-duration-ms }}
         OMP_CONFIG: ${{ inputs.config }}
         OMP_ARGS: ${{ inputs.args-json }}
         OMP_ARGS_FILE: ${{ inputs.args-file }}
@@ -176,3 +207,30 @@ runs:
         const note = renderResultArtifactLink(process.env.OMP_ARTIFACT_URL, days);
         for (const path of new Set([process.env.OMP_SUMMARY_PATH, process.env.GITHUB_STEP_SUMMARY].filter(Boolean))) await appendFile(path, note);
         NODE
+    - name: Share the approved scored result with Promptfoo
+      id: share
+      if: ${{ !cancelled() && inputs.share == 'true' && steps.evaluate.outputs.results-available == 'true' }}
+      shell: bash
+      env:
+        OMP_ACTION_PATH: ${{ github.action_path }}
+        OMP_PROMPTFOO_CLI: ${{ steps.runtime.outputs.promptfoo-cli-path }}
+        OMP_REPORTING_PATH: ${{ steps.runtime.outputs.reporting-path }}
+        OMP_RESULT_PATH: ${{ steps.evaluate.outputs.result-path }}
+        OMP_RESULT_DIRECTORY: ${{ steps.evaluate.outputs.artifact-directory }}
+        OMP_SUMMARY_PATH: ${{ steps.evaluate.outputs.summary-path }}
+      run: node "$OMP_ACTION_PATH/scripts/share.mjs"
+    - name: Post the evaluation PR comment
+      id: comment
+      if: ${{ !cancelled() && inputs.post-comment == 'true' && steps.evaluate.outputs.report-path != '' }}
+      shell: bash
+      env:
+        OMP_ACTION_PATH: ${{ github.action_path }}
+        OMP_GITHUB_TOKEN: ${{ inputs.github-token }}
+        OMP_COMMENT_KEY: ${{ inputs.comment-key }}
+        OMP_COMMENT_AUTHOR: ${{ inputs.comment-author }}
+        OMP_CONFIG: ${{ inputs.config }}
+        OMP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        OMP_REPORT_PATH: ${{ steps.evaluate.outputs.report-path }}
+        OMP_ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        OMP_VIEWER_URL: ${{ steps.share.outputs.viewer-url }}
+      run: node "$OMP_ACTION_PATH/scripts/comment.mjs"

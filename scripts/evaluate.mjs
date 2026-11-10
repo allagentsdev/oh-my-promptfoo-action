@@ -6,23 +6,42 @@ const fail = (message) => {
   console.error(message);
   process.exit(1);
 };
-if (mode !== "live" && mode !== "replay") fail("execution-mode must be live or replay");
-if (mode === "live" && env.OMP_REPLAY_RESULTS)
+if (!["live", "replay", "report"].includes(mode))
+  fail("execution-mode must be live, replay or report");
+if (mode !== "replay" && env.OMP_REPLAY_RESULTS)
   fail("replay-results requires execution-mode: replay");
+if (mode !== "report" && (env.OMP_RESULTS || env.OMP_NATIVE_EXIT_CODE))
+  fail("results and native-exit-code require execution-mode: report");
 let args;
-if (mode === "replay") {
-  if (!env.OMP_REPLAY_RESULTS) fail("replay-results is required in replay mode");
+if (mode !== "live") {
+  const path = mode === "replay" ? env.OMP_REPLAY_RESULTS : env.OMP_RESULTS;
+  if (!path) fail("A native result path is required in report and replay modes");
+  if (mode === "report" && !/^(unknown|0|[1-9]\d{0,2})$/.test(env.OMP_NATIVE_EXIT_CODE || ""))
+    fail("Report mode requires native-exit-code: 0-255 or unknown");
+  if (mode === "report" && Number(env.OMP_NATIVE_EXIT_CODE) > 255)
+    fail("native-exit-code must be 0-255 or unknown");
+  if (mode === "report" && env.OMP_TOOLCHAIN_MODE === "installed") {
+    const help = spawnSync(process.execPath, [env.OMP_CLI_PATH, "--help"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 15_000,
+    });
+    if (help.status !== 0 || !help.stdout.includes("--exit-code"))
+      fail(
+        "The installed reporter cannot preserve external exit codes. Use toolchain-mode: source for execution-mode: report.",
+      );
+  }
   let native;
   try {
     native = JSON.parse(env.OMP_ARGS ?? "[]");
   } catch {
-    fail("args-json must be an empty array in replay mode");
+    fail("args-json must be an empty array in report and replay modes");
   }
   if (!Array.isArray(native) || native.length || env.OMP_ARGS_FILE)
-    fail(
-      "Replay renders the complete recorded export; use an empty args-json array and no args-file",
-    );
-  args = ["report", "--replay", "--results", env.OMP_REPLAY_RESULTS];
+    fail("Reporting renders the complete export; use an empty args-json array and no args-file");
+  args = ["report", "--results", path];
+  if (mode === "replay") args.push("--replay");
+  else args.push("--exit-code", env.OMP_NATIVE_EXIT_CODE);
 } else {
   args = ["eval", "--args-json", env.OMP_ARGS ?? "[]", "--args-file", env.OMP_ARGS_FILE || ""];
 }

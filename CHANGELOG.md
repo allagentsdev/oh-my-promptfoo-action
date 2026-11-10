@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 - 2026-11-10
+
+- Align source and caller-installed reporting on `oh-my-promptfoo@1.31.0`, with native `promptfoo@0.125.1`. Verify current external-run reporting with the published package, including original runtime errors and unknown process status.
+
+- Update pinned pnpm setup and artifact upload Actions, and the Biome development dependency.
+
+- Clarify which responsibilities belong to the Action and which stay in caller workflows. Describe supported official Action mappings without promising every helper input.
+
+- Add optional sanitized PR comments and native Promptfoo viewer sharing. Keep both off by default, use explicit caller credentials, and expose their confirmed URLs.
+
+- Report a current external native evaluation with its original exit code, preserving failures, runtime errors and native scoring policy without rerunning models. Document official Action migration mappings, workflow filtering, persistent caching and remaining gaps.
+
+- Use the reviewed source reporter to explain unavailable measurements and show collapsed execution timing. Measure runtime preparation through the existing evaluation environment.
+
+- Keep the README focused on getting started, with the full reference and a source-backed comparison with the official Promptfoo Action under docs/.
+
 ## 1.1.1 - 2026-11-09
 
 - Use the reviewed reporter that names unlabelled `skill-used` and `not-skill-used` checks after their string skill targets when public labels are enabled. Keep explicit metrics first and other assertion values private.
