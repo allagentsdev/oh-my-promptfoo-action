@@ -121,7 +121,7 @@ runs:
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
       with:
         node-version-file: ${{ steps.toolchain.outputs.node-version-file }}
-    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       if: ${{ inputs.toolchain-mode != 'installed' }}
       with:
         package_json_file: ${{ steps.toolchain.outputs.manifest }}
@@ -182,7 +182,7 @@ runs:
     - name: Upload the approved scored result
       id: upload
       if: ${{ !cancelled() && inputs.upload-results == 'true' && steps.scored.outputs.path != '' }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ${{ inputs.artifact-name || steps.toolchain.outputs.artifact-name }}
         path: ${{ steps.scored.outputs.path }}
