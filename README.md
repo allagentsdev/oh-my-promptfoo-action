@@ -39,6 +39,7 @@ remain available when assertions fail.
 
 ## Examples and reference
 
+- [See a live code-review report](https://github.com/allagentsdev/oh-my-promptfoo/actions/runs/42723784266)
 - [Native filters and fixed release gates](docs/usage.md#fixed-release-regression)
 - [Replay a scored result without model calls](docs/usage.md#replay-a-scored-result-for-formatting)
 - [Use packages installed by the caller](docs/usage.md#use-packages-installed-by-the-caller)
