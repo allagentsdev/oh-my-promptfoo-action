@@ -150,29 +150,43 @@ by that package, its public CLI binary and its public reporting export against
 [toolchain.json](../toolchain.json). Missing or mismatched installations fail before
 evaluation, with no source or registry fallback. The caller owns provider/SDK
 installation, lockfiles, credentials and registry policy. Node remains pinned by
-the Action. This mode supports both live evaluation and recorded replay.
+the Action. This mode supports both live evaluation and recorded replay. The current
+1.30.2 pin cannot report a current external run with its original exit code; use
+source mode for `execution-mode: report` until the compatible reporter is published
+and pinned. An unsupported installed reporter fails with a specific source-mode
+instruction before attempting to render the result.
 
 The default `source` mode builds the reviewed immutable source and frozen
 lockfile, including any explicit source dependencies in that lockfile. Its registry
 installs inherit caller configuration; installs fail without retrying a different
 feed. Select installed mode when the caller must own the entire dependency route.
 
-| Input                     | Default               | Purpose                                                                                       |
-| ------------------------- | --------------------- | --------------------------------------------------------------------------------------------- |
-| `toolchain-mode`          | `source`              | Build reviewed source, or verify/use exact caller-installed packages with `installed`         |
-| `dependency-directory`    | Empty                 | Caller node_modules directory relative to working-directory; required only for installed mode |
-| `config`                  | Required              | One native config, relative to `working-directory`                                            |
-| `execution-mode`          | `live`                | `live` evaluates; `replay` renders saved scored results without model calls                   |
-| `replay-results`          | Empty                 | Native scored-result JSON relative to `working-directory`, required only for replay           |
-| `args-json`               | `[]`                  | JSON array of native argument strings; use only public values because GitHub prints inputs    |
-| `args-file`               | Empty                 | Private JSON argument-array file, relative to `working-directory`                             |
-| `working-directory`       | `.`                   | Caller directory from which to run Promptfoo                                                  |
-| `output-directory`        | `.promptfoo-ci`       | Parent of a fresh invocation directory                                                        |
-| `public-labels`           | `false`               | Approve suite/test/provider/assertion labels and source paths in summaries                    |
-| `upload-results`          | `false`               | Approve a credential-redacted scored-result artifact in the calling repository                |
-| `artifact-retention-days` | `0`                   | Use repository retention; a positive override is capped by repository policy                  |
-| `artifact-name`           | Generated unique name | Optional unique upload name                                                                   |
-| `suite-number`            | `1`                   | Legacy JSON reference; never displayed in suite cards                                         |
+| Input                     | Default                  | Purpose                                                                                        |
+| ------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `toolchain-mode`          | `source`                 | Build reviewed source, or verify/use exact caller-installed packages with `installed`          |
+| `dependency-directory`    | Empty                    | Caller node_modules directory relative to working-directory; required only for installed mode  |
+| `config`                  | Required                 | One native config, relative to `working-directory`                                             |
+| `execution-mode`          | `live`                   | `live` evaluates; `report` renders a current external run; `replay` renders historical results |
+| `replay-results`          | Empty                    | Native scored-result JSON relative to `working-directory`, required only for replay            |
+| `results`                 | Empty                    | Native JSON from a current external run; required only in report mode                          |
+| `native-exit-code`        | Empty                    | Original CLI status, 0-255 or `unknown`; required only in report mode                          |
+| `args-json`               | `[]`                     | JSON array of native argument strings; use only public values because GitHub prints inputs     |
+| `args-file`               | Empty                    | Private JSON argument-array file, relative to `working-directory`                              |
+| `working-directory`       | `.`                      | Caller directory from which to run Promptfoo                                                   |
+| `output-directory`        | `.promptfoo-ci`          | Parent of a fresh invocation directory                                                         |
+| `public-labels`           | `false`                  | Approve suite/test/provider/assertion labels and source paths in summaries                     |
+| `upload-results`          | `false`                  | Approve a credential-redacted scored-result artifact in the calling repository                 |
+| `artifact-retention-days` | `0`                      | Use repository retention; a positive override is capped by repository policy                   |
+| `artifact-name`           | Generated unique name    | Optional unique upload name                                                                    |
+| `suite-number`            | `1`                      | Legacy JSON reference; never displayed in suite cards                                          |
+| `share`                   | `false`                  | Explicitly approve native Promptfoo viewer sharing using caller-configured credentials         |
+| `post-comment`            | `false`                  | Post or update sanitized counts and links on the current PR                                    |
+| `github-token`            | Empty                    | Explicit token for comments; caller supplies `pull-requests: write`                            |
+| `comment-key`             | working-directory/config | Stable comment identity; set distinct matrix suite/candidate keys                              |
+| `comment-author`          | `github-actions[bot]`    | Supplied token's user or App bot login; matches comment ownership                              |
+
+`comment-author` defaults to `github-actions[bot]`. Set it to the supplied token's
+user or App bot login when using a custom token; comments match both author and key.
 
 With public labels enabled, an assertion uses its metric name. Unnamed `skill-used`
 and `not-skill-used` checks use their string skill target; other unnamed checks
@@ -189,16 +203,21 @@ failure or runner cancellation can prevent outputs from being produced.
 
 Raw answers, judge reasons, generated-file contents and credentials stay out of
 public summaries/logs. Raw JSON and diagnostics remain private on the runner.
-There is no Promptfoo Cloud sharing, stored-login/PAT fallback or permission
-escalation. When `upload-results` is true, the artifact intentionally contains
+Promptfoo sharing and PR comments are disabled by default. There is no stored-login/PAT
+fallback or permission escalation. When `upload-results` is true, the artifact intentionally contains
 native answers and judge reasons with known credentials redacted; approve it only
 for the calling repository's audience. Original files are preserved.
 
 A confirmed upload supplies `result-artifact-url` and `result-artifact-id` and
-adds: “Agent output and judge reasons: download the scored result (expires in N
+adds: “Candidate output and judge reasons: download the scored result (expires in N
 days).” Retention comes from the calling repository unless overridden. Failed
 uploads produce no placeholder link. Artifact upload uses the official pinned
 `actions/upload-artifact`; that service's runner/platform restrictions apply.
+
+`viewer-url` and `comment-url` are populated only after their optional integration
+succeeds. See the [migration guide](migration.md) for runnable examples and differences
+from the official Action. A requested integration failure fails the step while
+preserving the evaluation's existing outputs and private files.
 
 ## Pinned toolchain and local use
 

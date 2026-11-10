@@ -68,6 +68,10 @@ if (mode === "installed") {
     "toolchain-directory": directory,
     "cli-path": await exportedFile(manifest.bin?.["allagents-promptfoo"]),
     "reporting-path": await exportedFile(manifest.exports?.["./reporting"]?.import),
+    "promptfoo-cli-path": resolve(
+      parent,
+      JSON.parse(await readFile(join(parent, "package.json"), "utf8")).bin.promptfoo,
+    ),
   });
   console.log(
     `Using reviewed installed oh-my-promptfoo ${installed.packageVersion} and Promptfoo ${installed.promptfooVersion}.`,
@@ -91,9 +95,12 @@ execFileSync("pnpm", ["install", "--frozen-lockfile", "--ignore-scripts"], {
 });
 execFileSync("pnpm", ["build"], { cwd: directory, stdio: "inherit" });
 const dist = join(directory, "packages/oh-my-promptfoo/dist");
+const peerManifest = join(directory, "node_modules/promptfoo/package.json");
+const peer = JSON.parse(await readFile(peerManifest, "utf8"));
 await output({
   "toolchain-directory": directory,
   "cli-path": join(dist, "cli.js"),
   "reporting-path": join(dist, "reporting.js"),
+  "promptfoo-cli-path": resolve(dirname(peerManifest), peer.bin.promptfoo),
 });
 console.log(`Prepared reviewed oh-my-promptfoo source ${revision}.`);

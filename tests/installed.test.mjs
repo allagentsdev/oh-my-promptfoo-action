@@ -128,6 +128,26 @@ require('node:module').syncBuiltinESMExports();\n`,
       env: evaluation,
     });
     const resultPaths = outputs(await readFile(resultOutput, "utf8"));
+    if (pin.packageVersion === "1.30.2" && !process.env.OMP_INSTALLED_TEST_TARBALL) {
+      const unsupportedOutput = join(temporary, "unsupported-report-outputs");
+      await assert.rejects(
+        execute(process.execPath, [join(root, "scripts/evaluate.mjs")], {
+          cwd: caller,
+          timeout: 30_000,
+          env: {
+            ...evaluation,
+            OMP_EXECUTION_MODE: "report",
+            OMP_TOOLCHAIN_MODE: "installed",
+            OMP_RESULTS: resultPaths["result-path"],
+            OMP_NATIVE_EXIT_CODE: "0",
+            OMP_ARGS: "[]",
+            GITHUB_OUTPUT: unsupportedOutput,
+          },
+        }),
+        (error) => error.stderr.includes("Use toolchain-mode: source"),
+      );
+      await assert.rejects(readFile(unsupportedOutput), { code: "ENOENT" });
+    }
     assert.equal(resultPaths["evaluation-status"], "pass");
     const report = JSON.parse(await readFile(resultPaths["report-path"], "utf8"));
     assert.deepEqual(report.counts, { pass: 1, fail: 0, error: 0, unknown: 0 });

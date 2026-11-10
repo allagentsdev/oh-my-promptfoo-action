@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { gunzipSync } from "node:zlib";
 import { parse, stringify } from "yaml";
 
 const root = resolve(import.meta.dirname, "..");
@@ -16,6 +19,8 @@ assert.ok(
 const cli = join(runtime, "packages/oh-my-promptfoo/dist/cli.js");
 const reporting = join(runtime, "packages/oh-my-promptfoo/dist/reporting.js");
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
+const require = createRequire(join(runtime, "packages/oh-my-promptfoo/package.json"));
+const nativeCli = resolve(require.resolve("promptfoo"), "../entrypoint.js");
 function outputs(text) {
   const values = {};
   const lines = text.trim().split("\n");
@@ -40,6 +45,25 @@ function shell(step, cwd, env) {
     timeout: 90_000,
   });
 }
+function shellAsync(step, cwd, env) {
+  return new Promise((resolveChild, reject) => {
+    const child = spawn("bash", ["-eo", "pipefail", "-c", step.run], {
+      cwd,
+      env: { ...process.env, ...env },
+      timeout: 120_000,
+    });
+    let stdout = "",
+      stderr = "";
+    child.stdout.on("data", (data) => {
+      stdout += data;
+    });
+    child.stderr.on("data", (data) => {
+      stderr += data;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => resolveChild({ status, stdout, stderr }));
+  });
+}
 async function evaluate(directory, config, args, extra = {}) {
   const output = join(directory, crypto.randomUUID());
   const summary = `${output}.md`;
@@ -48,6 +72,8 @@ async function evaluate(directory, config, args, extra = {}) {
     OMP_ACTION_PATH: root,
     OMP_EXECUTION_MODE: "live",
     OMP_REPLAY_RESULTS: "",
+    OMP_RESULTS: "",
+    OMP_NATIVE_EXIT_CODE: "",
     OMP_CLI_PATH: cli,
     OMP_CONFIG: config,
     OMP_ARGS: JSON.stringify(args),
@@ -307,6 +333,13 @@ test("assertion failure retains raw results and makes an approved redacted artif
     const run = await evaluate(directory, config, ["--no-cache"]);
     assert.equal(run.status, 1);
     assert.equal(run.values["evaluation-status"], "fail");
+    const current = await evaluate(directory, config, [], {
+      OMP_EXECUTION_MODE: "report",
+      OMP_RESULTS: run.values["result-path"],
+      OMP_NATIVE_EXIT_CODE: run.values["evaluation-exit-code"],
+    });
+    assert.equal(current.status, 1);
+    assert.equal(current.values["evaluation-status"], "fail");
     const replay = await evaluate(directory, config, [], {
       OMP_EXECUTION_MODE: "replay",
       OMP_REPLAY_RESULTS: run.values["result-path"],
@@ -325,7 +358,7 @@ test("assertion failure retains raw results and makes an approved redacted artif
     assert.ok(existsSync(run.values["log-path"]));
     assert.ok((await readFile(run.values["result-path"], "utf8")).includes("PRIVATE_ANSWER"));
     assert.ok(run.summary.includes("## Evals — ❌ FAIL") && run.summary.includes("unknown"));
-    assert.ok(run.summary.includes("Agent cost: not reported"));
+    assert.ok(run.summary.includes("Candidate cost: not reported"));
     assert.ok(!run.stdout.includes("PRIVATE_ANSWER") && !run.summary.includes("PRIVATE_ANSWER"));
     const output = join(directory, "artifact-output");
     const env = {
@@ -370,7 +403,7 @@ test("assertion failure retains raw results and makes an approved redacted artif
       assert.equal(footer.status, 0, footer.stderr);
       const text = await readFile(summary, "utf8");
       assert.ok(text.startsWith("## Evals — ❌ FAIL") && text.includes(expected));
-      assert.equal((text.match(/Agent output and judge reasons/g) ?? []).length, 1);
+      assert.equal((text.match(/Candidate output and judge reasons/g) ?? []).length, 1);
       assert.ok(!text.includes("PRIVATE_ANSWER"));
     }
   } finally {
@@ -399,6 +432,13 @@ test("provider errors and zero coverage remain failing gates with unknown candid
       const run = await evaluate(directory, config, args);
       assert.equal(run.status, 1);
       assert.equal(run.values["evaluation-status"], "error");
+      const current = await evaluate(directory, config, [], {
+        OMP_EXECUTION_MODE: "report",
+        OMP_RESULTS: run.values["result-path"],
+        OMP_NATIVE_EXIT_CODE: run.values["evaluation-exit-code"],
+      });
+      assert.equal(current.status, 1);
+      assert.equal(current.values["evaluation-status"], "error");
       const replay = await evaluate(directory, config, [], {
         OMP_EXECUTION_MODE: "replay",
         OMP_REPLAY_RESULTS: run.values["result-path"],
@@ -416,6 +456,306 @@ test("provider errors and zero coverage remain failing gates with unknown candid
       );
     }
   } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("report-only renders a current external export with its original exit status, without loading providers", async () => {
+  const directory = await mkdtemp(join(process.env.RUNNER_TEMP, "report caller "));
+  try {
+    const config = join(directory, "promptfooconfig.yaml");
+    await writeFile(
+      config,
+      stringify({
+        prompts: ["PRIVATE_ANSWER"],
+        providers: ["echo"],
+        tests: [{ assert: [{ type: "equals", value: "PRIVATE_ANSWER" }] }],
+      }),
+    );
+    const captured = await evaluate(directory, config, ["--no-cache"]);
+    assert.equal(captured.status, 0);
+    const original = await readFile(captured.values["result-path"], "utf8");
+    await writeFile(config, "throw new Error('Report mode must never evaluate providers');");
+    for (const [code, expected] of [
+      ["0", "pass"],
+      ["100", "fail"],
+      ["1", "error"],
+      ["unknown", "error"],
+    ]) {
+      const run = await evaluate(directory, config, [], {
+        OMP_EXECUTION_MODE: "report",
+        OMP_TOOLCHAIN_MODE: "installed",
+        OMP_RESULTS: captured.values["result-path"],
+        OMP_NATIVE_EXIT_CODE: code,
+      });
+      assert.equal(run.status, expected === "pass" ? 0 : 1, run.stdout + run.stderr);
+      assert.equal(run.values["evaluation-status"], expected);
+      assert.equal(run.values["evaluation-exit-code"], code);
+      assert.equal(run.values.replayed, "false");
+      assert.ok(!run.summary.includes("Replay") && !run.stdout.includes("Evaluation started"));
+      assert.ok(!(run.stdout + run.stderr + run.summary).includes("PRIVATE_ANSWER"));
+    }
+    const missing = await evaluate(directory, config, [], {
+      OMP_EXECUTION_MODE: "report",
+      OMP_RESULTS: "missing.json",
+      OMP_NATIVE_EXIT_CODE: "0",
+    });
+    assert.equal(missing.values["evaluation-status"], "error");
+    assert.equal(missing.values["results-available"], "false");
+    assert.equal(await readFile(captured.values["result-path"], "utf8"), original);
+    for (const code of ["", "256", "-1", "0; echo PRIVATE_ARGUMENT"]) {
+      const child = shell(
+        action.runs.steps.find((step) => step.id === "evaluate"),
+        directory,
+        {
+          OMP_ACTION_PATH: root,
+          OMP_CLI_PATH: cli,
+          OMP_CONFIG: config,
+          OMP_EXECUTION_MODE: "report",
+          OMP_RESULTS: captured.values["result-path"],
+          OMP_NATIVE_EXIT_CODE: code,
+          OMP_ARGS: "[]",
+          OMP_ARGS_FILE: "",
+          OMP_REPLAY_RESULTS: "",
+        },
+      );
+      assert.equal(child.status, 1);
+      assert.ok(!child.stdout.includes("PRIVATE_ARGUMENT"));
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("opt-in native sharing and PR comments retain private detail while exposing only approved links and counts", async () => {
+  const directory = await mkdtemp(join(process.env.RUNNER_TEMP, "integration caller "));
+  const requests = [],
+    comments = [];
+  let denied = false;
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const bytes = Buffer.concat(chunks);
+    const text = (
+      request.headers["content-encoding"] === "gzip" ? gunzipSync(bytes) : bytes
+    ).toString();
+    const body = text ? JSON.parse(text) : undefined;
+    requests.push({
+      method: request.method,
+      url: request.url,
+      body,
+      authorization: request.headers.authorization,
+    });
+    response.setHeader("Content-Type", "application/json");
+    if (denied) {
+      response.writeHead(403);
+      response.end(JSON.stringify({ message: "PRIVATE_PERMISSION_REASON" }));
+      return;
+    }
+    if (request.url.startsWith("/repos/example/evals/issues")) {
+      if (request.method === "GET") {
+        response.end(
+          JSON.stringify(
+            new URL(request.url, "http://localhost").searchParams.get("page") === "1"
+              ? Array.from({ length: 100 }, (_, i) => ({
+                  id: i,
+                  body: "unrelated",
+                  user: { type: "User" },
+                }))
+              : comments,
+          ),
+        );
+      } else {
+        const comment = {
+          id: comments.length + 101,
+          body: body.body,
+          user:
+            request.headers.authorization === "Bearer test-user-token"
+              ? { type: "User", login: "example-user" }
+              : { type: "Bot", login: "github-actions[bot]" },
+          html_url: `https://github.com/example/evals/pull/7#issuecomment-${comments.length + 101}`,
+        };
+        let updated = comment;
+        if (request.method === "PATCH") {
+          updated = comments.find((item) => String(item.id) === request.url.split("/").at(-1));
+          updated.body = body.body;
+        } else comments.push(comment);
+        response.end(JSON.stringify(updated));
+      }
+    } else response.end(JSON.stringify({ id: "eval-shared-local", success: true }));
+  });
+  await new Promise((resolveServer) => server.listen(0, "127.0.0.1", resolveServer));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const config = join(directory, "promptfooconfig.yaml");
+    await writeFile(
+      config,
+      stringify({
+        prompts: ["PRIVATE_ANSWER"],
+        providers: ["echo"],
+        env: { INTEGRATION_CANARY_TOKEN: "private-secret-canary" },
+        tests: [{ assert: [{ type: "equals", value: "different" }] }],
+      }),
+    );
+    const run = await evaluate(directory, config, ["--no-cache"]);
+    assert.equal(run.values["evaluation-status"], "fail");
+    assert.equal(requests.length, 0);
+    const shareOutput = join(directory, "share-output");
+    const env = {
+      OMP_ACTION_PATH: root,
+      OMP_PROMPTFOO_CLI: nativeCli,
+      OMP_REPORTING_PATH: reporting,
+      OMP_RESULT_PATH: run.values["result-path"],
+      OMP_RESULT_DIRECTORY: run.values["artifact-directory"],
+      OMP_SUMMARY_PATH: run.values["summary-path"],
+      GITHUB_OUTPUT: shareOutput,
+      GITHUB_STEP_SUMMARY: run.values["summary-path"],
+      PROMPTFOO_REMOTE_API_BASE_URL: base,
+      PROMPTFOO_REMOTE_APP_BASE_URL: base,
+      PROMPTFOO_API_KEY: "",
+      PROMPTFOO_DISABLE_SHARING: "",
+      PROMPTFOO_DISABLE_TELEMETRY: "1",
+      PROMPTFOO_DISABLE_UPDATE: "1",
+    };
+    const shared = await shellAsync(
+      action.runs.steps.find((step) => step.id === "share"),
+      directory,
+      env,
+    );
+    assert.equal(
+      shared.status,
+      0,
+      shared.stdout +
+        shared.stderr +
+        (await readFile(join(run.values["artifact-directory"], "share.log"), "utf8")),
+    );
+    const viewer = outputs(await readFile(shareOutput, "utf8"))["viewer-url"];
+    assert.ok(viewer.startsWith(base) && viewer.includes("eval-shared-local"));
+    const uploaded = JSON.stringify(
+      requests.filter((request) => !request.url.startsWith("/repos/")),
+    );
+    assert.ok(uploaded.includes("PRIVATE_ANSWER") && !uploaded.includes("private-secret-canary"));
+    assert.ok(!(shared.stdout + shared.stderr).includes("PRIVATE_"));
+    assert.ok((await readFile(run.values["summary-path"], "utf8")).includes(viewer));
+    const event = join(directory, "event.json");
+    await writeFile(event, JSON.stringify({ pull_request: { number: 7 } }));
+    const commentOutput = join(directory, "comment-output");
+    const commentEnv = {
+      OMP_ACTION_PATH: root,
+      OMP_GITHUB_TOKEN: "test-only-token",
+      OMP_CONFIG: config,
+      OMP_REPORT_PATH: run.values["report-path"],
+      OMP_ARTIFACT_URL: "https://github.com/example/evals/actions/runs/1/artifacts/2",
+      OMP_VIEWER_URL: viewer,
+      GITHUB_API_URL: base,
+      GITHUB_REPOSITORY: "example/evals",
+      GITHUB_RUN_ID: "1",
+      GITHUB_EVENT_PATH: event,
+      GITHUB_OUTPUT: commentOutput,
+    };
+    for (const key of ["release", "release", "comparison"]) {
+      const child = await shellAsync(
+        action.runs.steps.find((step) => step.id === "comment"),
+        directory,
+        { ...commentEnv, OMP_COMMENT_KEY: key },
+      );
+      assert.equal(child.status, 0, child.stdout + child.stderr);
+    }
+    assert.equal(comments.length, 2);
+    assert.equal(requests.filter((request) => request.method === "PATCH").length, 1);
+    assert.ok((await readFile(commentOutput, "utf8")).includes("#issuecomment-"));
+    for (const comment of comments) {
+      assert.ok(
+        comment.body.includes("Evals — ❌ FAIL") &&
+          comment.body.includes("0 passed · 1 failed · 0 errors"),
+      );
+      assert.ok(comment.body.includes(viewer) && comment.body.includes("Scored result"));
+      assert.ok(
+        !comment.body.includes("PRIVATE_") && !comment.body.includes("private-secret-canary"),
+      );
+    }
+    assert.ok(
+      requests
+        .filter((request) => request.url.startsWith("/repos/"))
+        .every((request) => request.authorization === "Bearer test-only-token"),
+    );
+    const otherBot = {
+      ...comments[0],
+      id: 999,
+      user: { type: "Bot", login: "different-app[bot]" },
+    };
+    comments.unshift(otherBot);
+    const owned = await shellAsync(
+      action.runs.steps.find((step) => step.id === "comment"),
+      directory,
+      { ...commentEnv, OMP_COMMENT_KEY: "release" },
+    );
+    assert.equal(owned.status, 0, owned.stderr);
+    assert.ok(requests.at(-1).url.endsWith("/101"));
+    for (let i = 0; i < 2; i++) {
+      const user = await shellAsync(
+        action.runs.steps.find((step) => step.id === "comment"),
+        directory,
+        {
+          ...commentEnv,
+          OMP_COMMENT_KEY: "user-token",
+          OMP_GITHUB_TOKEN: "test-user-token",
+          OMP_COMMENT_AUTHOR: "Example-User",
+        },
+      );
+      assert.equal(user.status, 0, user.stderr);
+    }
+    assert.equal(comments.filter((comment) => comment.user.login === "example-user").length, 1);
+    const beforeSkip = requests.length;
+    await writeFile(event, "{}");
+    const skipped = await shellAsync(
+      action.runs.steps.find((step) => step.id === "comment"),
+      directory,
+      { ...commentEnv, OMP_GITHUB_TOKEN: "" },
+    );
+    assert.equal(skipped.status, 0);
+    assert.ok(skipped.stdout.includes("PR comment skipped"));
+    assert.equal(requests.length, beforeSkip);
+    await writeFile(event, JSON.stringify({ pull_request: { number: 7 } }));
+    denied = true;
+    const failed = await shellAsync(
+      action.runs.steps.find((step) => step.id === "comment"),
+      directory,
+      commentEnv,
+    );
+    assert.equal(failed.status, 1);
+    assert.ok(!(failed.stdout + failed.stderr).includes("PRIVATE_PERMISSION_REASON"));
+    const count = requests.length;
+    const noToken = await shellAsync(
+      action.runs.steps.find((step) => step.id === "comment"),
+      directory,
+      { ...commentEnv, OMP_GITHUB_TOKEN: "", GH_TOKEN: "must-not-be-used-as-fallback" },
+    );
+    assert.equal(noToken.status, 1);
+    assert.equal(requests.length, count);
+    const unsafe = await shellAsync(
+      action.runs.steps.find((step) => step.id === "comment"),
+      directory,
+      { ...commentEnv, OMP_VIEWER_URL: "https://user:PRIVATE_CREDENTIAL@example.test/eval/1" },
+    );
+    assert.equal(unsafe.status, 1);
+    assert.equal(requests.length, count);
+    assert.ok(!(unsafe.stdout + unsafe.stderr).includes("PRIVATE_CREDENTIAL"));
+    const failedDirectory = await mkdtemp(join(directory, "failed-share-"));
+    const failedOutput = join(directory, "failed-share-output");
+    const failedShare = await shellAsync(
+      action.runs.steps.find((step) => step.id === "share"),
+      directory,
+      { ...env, OMP_RESULT_DIRECTORY: failedDirectory, GITHUB_OUTPUT: failedOutput },
+    );
+    assert.equal(failedShare.status, 1);
+    assert.equal(existsSync(failedOutput), false);
+    assert.ok(!(failedShare.stdout + failedShare.stderr).includes("PRIVATE_PERMISSION_REASON"));
+    assert.ok(existsSync(join(failedDirectory, "share.log")));
+    assert.ok(existsSync(run.values["result-path"]));
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolveServer) => server.close(resolveServer));
     await rm(directory, { recursive: true, force: true });
   }
 });

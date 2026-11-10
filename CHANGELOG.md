@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add optional sanitized PR comments and native Promptfoo viewer sharing. Keep both off by default, use explicit caller credentials, and expose their confirmed URLs.
+
+- Report a current external native evaluation with its original exit code, preserving failures, runtime errors and native scoring policy without rerunning models. Document official Action migration mappings, workflow filtering, persistent caching and remaining gaps.
+
 - Use the reviewed source reporter to explain unavailable measurements and show collapsed execution timing. Measure runtime preparation through the existing evaluation environment.
 
 - Keep the README focused on getting started, with the full reference and a source-backed comparison with the official Promptfoo Action under docs/.
