@@ -13,7 +13,7 @@ const execute = promisify(execFile);
 
 test("the real frozen toolchain install uses the caller registry and fails its auth errors without fallback", async () => {
   const directory = await mkdtemp(join(tmpdir(), "action-registry-"));
-  const name = "oh-my-promptfoo-registry-probe";
+  const name = "promptfoo";
   const repo = join(directory, "source");
   const action = join(directory, "action");
   const archive = join(directory, "probe.tgz");
@@ -60,7 +60,12 @@ test("the real frozen toolchain install uses the caller registry and fails its a
     await mkdir(join(action, "scripts"), { recursive: true });
     await writeFile(
       join(packageDirectory, "package.json"),
-      JSON.stringify({ name, version: "1.0.0", main: "index.cjs" }),
+      JSON.stringify({
+        name,
+        version: "1.0.0",
+        main: "index.cjs",
+        bin: { promptfoo: "index.cjs" },
+      }),
     );
     await writeFile(
       join(packageDirectory, "index.cjs"),
