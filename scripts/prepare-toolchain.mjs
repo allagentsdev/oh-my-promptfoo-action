@@ -1,17 +1,56 @@
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdtemp, readFile, realpath, stat } from "node:fs/promises";
+import { appendFile, lstat, mkdtemp, readFile, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const action = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const started = performance.now();
-const mode = process.env.OMP_TOOLCHAIN_MODE || "source";
-const dependencies = process.env.OMP_DEPENDENCY_DIRECTORY;
-if (!["source", "installed"].includes(mode))
-  throw new Error("toolchain-mode must be source or installed");
-if ((mode === "installed") !== Boolean(dependencies))
+const env = process.env;
+const requestedMode = env.OMP_TOOLCHAIN_MODE || "";
+const requestedDependencies = env.OMP_DEPENDENCY_DIRECTORY;
+const workingDirectory = resolve(env.OMP_WORKING_DIRECTORY || ".");
+if (!["", "source", "installed"].includes(requestedMode))
+  throw new Error("toolchain-mode must be source or installed when specified");
+if ((requestedMode === "installed") !== Boolean(requestedDependencies))
   throw new Error("dependency-directory is required only with toolchain-mode installed");
+
+function within(root, path) {
+  const rel = relative(root, path);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+async function discoverInstall(checkout) {
+  const config = await realpath(resolve(workingDirectory, env.OMP_CONFIG));
+  if (!within(checkout, config))
+    throw new Error("Auto-discovery requires a config inside the checkout");
+  for (let parent = dirname(config); within(checkout, parent); parent = dirname(parent)) {
+    const candidate = join(parent, "node_modules", "oh-my-promptfoo");
+    const exists = await lstat(candidate).then(
+      () => true,
+      (error) => {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      },
+    );
+    if (exists) {
+      const directory = await realpath(candidate);
+      if (!within(checkout, directory))
+        throw new Error("Discovered runtime must stay inside the checkout");
+      return directory;
+    }
+    if (parent === checkout) break;
+  }
+}
+
+const autoDiscover =
+  !requestedMode &&
+  env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
+  (env.OMP_EXECUTION_MODE || "live") === "live" &&
+  env.OMP_CONFIG;
+const checkout = autoDiscover ? await realpath(env.GITHUB_WORKSPACE) : undefined;
+const discovered = checkout ? await discoverInstall(checkout) : undefined;
+const mode = requestedMode || (discovered ? "installed" : "source");
 const output = async (values) => {
   if (process.argv[2] !== "--setup") values["toolchain-duration-ms"] = performance.now() - started;
   for (const [key, value] of Object.entries(values)) {
@@ -25,6 +64,7 @@ if (process.argv[2] === "--setup") {
     manifest: fromWorkspace("package.json"),
     "node-version-file": fromWorkspace(".node-version"),
     "artifact-name": `promptfoo-results-${crypto.randomUUID()}`,
+    "toolchain-mode": mode,
   });
   process.exit(0);
 }
@@ -36,12 +76,15 @@ const { repository, revision, installed } = JSON.parse(
   await readFile(new URL("../toolchain.json", import.meta.url), "utf8"),
 );
 if (mode === "installed") {
-  const modules = resolve(process.env.OMP_WORKING_DIRECTORY || ".", dependencies);
-  const directory = await realpath(join(modules, "oh-my-promptfoo"));
+  const directory =
+    discovered ??
+    (await realpath(resolve(workingDirectory, requestedDependencies, "oh-my-promptfoo")));
   const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
   if (manifest.name !== "oh-my-promptfoo" || manifest.version !== installed?.packageVersion)
     throw new Error("Installed oh-my-promptfoo version must match the reviewed toolchain pin");
   const peer = createRequire(join(directory, "package.json")).resolve("promptfoo");
+  if (discovered && !within(checkout, await realpath(peer)))
+    throw new Error("Discovered Promptfoo peer must stay inside the checkout");
   let parent = dirname(peer);
   while (true) {
     const metadata = await readFile(join(parent, "package.json"), "utf8")

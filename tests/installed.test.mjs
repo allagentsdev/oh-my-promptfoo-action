@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -72,12 +72,16 @@ require('node:module').syncBuiltinESMExports();\n`,
       GITHUB_OUTPUT: preparedOutput,
       SETUP_ATTEMPTS: attempts,
     };
-    const prepare = () =>
-      execute(process.execPath, ["--require", guard, join(root, "scripts/prepare-toolchain.mjs")], {
-        cwd: caller,
-        env,
-        timeout: 15_000,
-      });
+    const prepare = (overrides = {}, args = []) =>
+      execute(
+        process.execPath,
+        ["--require", guard, join(root, "scripts/prepare-toolchain.mjs"), ...args],
+        {
+          cwd: caller,
+          env: { ...env, ...overrides },
+          timeout: 15_000,
+        },
+      );
     await prepare();
     const runtime = outputs(await readFile(preparedOutput, "utf8"));
     assert.ok(Number.isFinite(Number(runtime["toolchain-duration-ms"])));
@@ -103,15 +107,43 @@ require('node:module').syncBuiltinESMExports();\n`,
         ],
       }),
     );
+    const nested = join(caller, "suites", "nested");
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(nested, "promptfooconfig.yaml"), await readFile(config));
+    const discoveredOutput = join(temporary, "discovered-outputs");
+    const discovery = {
+      OMP_TOOLCHAIN_MODE: "",
+      OMP_DEPENDENCY_DIRECTORY: "",
+      OMP_EXECUTION_MODE: "live",
+      OMP_CONFIG: "suites/nested/promptfooconfig.yaml",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      GITHUB_OUTPUT: discoveredOutput,
+    };
+    await prepare(discovery, ["--setup"]);
+    assert.equal(outputs(await readFile(discoveredOutput, "utf8"))["toolchain-mode"], "installed");
+    await prepare(discovery);
+    const discovered = outputs(await readFile(discoveredOutput, "utf8"));
+    assert.equal(discovered["cli-path"], runtime["cli-path"]);
+    assert.equal(discovered["reporting-path"], runtime["reporting-path"]);
+    for (const [label, overrides] of Object.entries({
+      pullRequest: { GITHUB_EVENT_NAME: "pull_request" },
+      replay: { OMP_EXECUTION_MODE: "replay" },
+      report: { OMP_EXECUTION_MODE: "report" },
+      source: { OMP_TOOLCHAIN_MODE: "source" },
+    })) {
+      const output = join(temporary, `${label}-setup-outputs`);
+      await prepare({ ...discovery, ...overrides, GITHUB_OUTPUT: output }, ["--setup"]);
+      assert.equal(outputs(await readFile(output, "utf8"))["toolchain-mode"], "source");
+    }
     const resultOutput = join(temporary, "eval-outputs");
     const summary = join(temporary, "summary.md");
     const step = action.runs.steps.find((item) => item.id === "evaluate");
     const evaluation = {
       ...process.env,
       OMP_ACTION_PATH: root,
-      OMP_CLI_PATH: runtime["cli-path"],
-      ALLAGENTS_EVAL_TOOLCHAIN_MS: runtime["toolchain-duration-ms"],
-      OMP_CONFIG: config,
+      OMP_CLI_PATH: discovered["cli-path"],
+      ALLAGENTS_EVAL_TOOLCHAIN_MS: discovered["toolchain-duration-ms"],
+      OMP_CONFIG: join(nested, "promptfooconfig.yaml"),
       OMP_EXECUTION_MODE: "live",
       OMP_REPLAY_RESULTS: "",
       OMP_ARGS: '["--no-cache"]',
@@ -191,6 +223,7 @@ require('node:module').syncBuiltinESMExports();\n`,
     const metadata = await readFile(metadataPath, "utf8");
     await writeFile(metadataPath, JSON.stringify({ ...JSON.parse(metadata), version: "0.0.0" }));
     await assert.rejects(prepare(), /Installed oh-my-promptfoo version must match/);
+    await assert.rejects(prepare(discovery), /Installed oh-my-promptfoo version must match/);
     await writeFile(metadataPath, metadata);
     const peerPath = join(caller, "node_modules/promptfoo/package.json");
     const peer = await readFile(peerPath, "utf8");
@@ -204,6 +237,46 @@ require('node:module').syncBuiltinESMExports();\n`,
       "",
       "Missing/mismatched installs must never fall back to source setup",
     );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("manual live setup discovers the closest checkout install without selecting an outside package", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "runtime-discovery-"));
+  try {
+    const checkout = join(directory, "checkout");
+    const suite = join(checkout, "evals", "suite");
+    const outside = join(directory, "node_modules", "oh-my-promptfoo");
+    await mkdir(suite, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(suite, "promptfooconfig.yaml"), "{}");
+    const setup = async () => {
+      const output = join(directory, "outputs");
+      await writeFile(output, "");
+      await execute(process.execPath, [join(root, "scripts/prepare-toolchain.mjs"), "--setup"], {
+        cwd: checkout,
+        env: {
+          ...process.env,
+          OMP_TOOLCHAIN_MODE: "",
+          OMP_DEPENDENCY_DIRECTORY: "",
+          OMP_WORKING_DIRECTORY: "evals",
+          OMP_CONFIG: "suite/promptfooconfig.yaml",
+          OMP_EXECUTION_MODE: "live",
+          GITHUB_EVENT_NAME: "workflow_dispatch",
+          GITHUB_WORKSPACE: checkout,
+          GITHUB_OUTPUT: output,
+        },
+      });
+      return outputs(await readFile(output, "utf8"))["toolchain-mode"];
+    };
+    assert.equal(await setup(), "source");
+    const install = join(checkout, "evals/node_modules/oh-my-promptfoo");
+    await mkdir(install, { recursive: true });
+    assert.equal(await setup(), "installed");
+    await rm(install, { recursive: true });
+    await symlink(outside, install, "dir");
+    await assert.rejects(setup(), /Discovered runtime must stay inside the checkout/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
