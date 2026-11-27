@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Pin the source and caller-installed runtimes to `oh-my-promptfoo@1.33.0`, keeping Promptfoo at `0.125.1`.
+
 ## 1.2.0 - 2026-11-10
 
 - Align source and caller-installed reporting on `oh-my-promptfoo@1.31.0`, with native `promptfoo@0.125.1`. Verify current external-run reporting with the published package, including original runtime errors and unknown process status.
