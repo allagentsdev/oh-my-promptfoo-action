@@ -132,7 +132,7 @@ output and sharing ownership stay with the Action.
 ### Use packages installed by the caller
 
 For environments that require their own dependency installation and registry
-controls, install exact `oh-my-promptfoo@1.31.0` and `promptfoo@0.125.1` pins through
+controls, install exact `oh-my-promptfoo@1.33.0` and `promptfoo@0.125.1` pins through
 your checked-in manifest/lockfile and approved registry before this step:
 
 ```yaml
