@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 - 2026-11-27
 
 - Pin the source and caller-installed runtimes to `oh-my-promptfoo@1.33.0`, keeping Promptfoo at `0.125.1`.
+- Update the artifact download Action used in validation and the Biome development dependency.
 
 ## 1.2.0 - 2026-11-10
 
