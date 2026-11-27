@@ -1,8 +1,8 @@
 {
   "repository": "https://github.com/allagentsdev/oh-my-promptfoo.git",
-  "revision": "a54f76f424b81bb205255ab1303aeb06c5d71dc1",
+  "revision": "3cbb529e0001404474dac1bf3b09940c00da8ec6",
   "installed": {
-    "packageVersion": "1.33.0",
+    "packageVersion": "1.33.1",
     "promptfooVersion": "0.125.1"
   }
 }
