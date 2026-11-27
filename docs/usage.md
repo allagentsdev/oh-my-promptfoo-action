@@ -131,6 +131,17 @@ output and sharing ownership stay with the Action.
 
 ### Use packages installed by the caller
 
+For a manually dispatched live evaluation, omit `toolchain-mode` and
+`dependency-directory` to discover an existing runtime. The Action searches for
+`node_modules/oh-my-promptfoo` starting beside the suite config and walking up
+within the checkout. The nearest install must match both reviewed package pins.
+A mismatch fails rather than falling back; if there is no install, the Action
+builds its reviewed source. Only use this with a trusted checkout and dependency
+installation. Set `toolchain-mode: source` to skip discovery explicitly.
+
+Other events and report/replay runs still default to source mode. To reuse an
+install explicitly, set both inputs as shown below.
+
 For environments that require their own dependency installation and registry
 controls, install exact `oh-my-promptfoo@1.33.1` and `promptfoo@0.125.1` pins through
 your checked-in manifest/lockfile and approved registry before this step:
@@ -161,7 +172,7 @@ feed. Select installed mode when the caller must own the entire dependency route
 
 | Input                     | Default                  | Purpose                                                                                        |
 | ------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `toolchain-mode`          | `source`                 | Build reviewed source, or verify/use exact caller-installed packages with `installed`          |
+| `toolchain-mode`          | Empty                    | Discover on manual live runs, otherwise use `source`; explicit modes override.                 |
 | `dependency-directory`    | Empty                    | Caller node_modules directory relative to working-directory; required only for installed mode  |
 | `config`                  | Required                 | One native config, relative to `working-directory`                                             |
 | `execution-mode`          | `live`                   | `live` evaluates; `report` renders a current external run; `replay` renders historical results |

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 - 2026-11-27
+
+- Discover a matching installed runtime from the suite config directory on manual live evals, so callers can omit `toolchain-mode` and `dependency-directory`. Explicit inputs and the defaults for other runs are unchanged.
+
 ## 1.2.2 - 2026-11-27
 
 - Pin the source and caller-installed runtimes to `oh-my-promptfoo@1.33.1`, including zero grader usage reporting for `file-read`. Promptfoo remains at `0.125.1`.
